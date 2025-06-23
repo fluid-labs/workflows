@@ -3,9 +3,15 @@ import { message } from 'telegraf/filters';
 import { config } from 'dotenv';
 import { Workflow, WorkflowType } from './types/workflow';
 import { ArweaveService } from './services/arweave.service';
+import { PostHog } from 'posthog-node';
 
 // Load environment variables
 config();
+
+// Initialize PostHog
+const analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
+  host: 'https://us.i.posthog.com'
+});
 
 // Define custom context type
 interface BotContext extends Context {
@@ -60,6 +66,19 @@ bot.command('start', async (ctx: BotContext) => {
   
   // Initialize session
   ctx.session = {};
+
+  // Capture bot start event
+  analytics.capture({
+    distinctId: ctx.from?.id?.toString() || 'unknown',
+    event: 'Bot_started',
+    properties: {
+      action: 'start_bot',
+      username: ctx.from?.username,
+      firstName: ctx.from?.first_name,
+      lastName: ctx.from?.last_name
+    }
+  });
+
   await ctx.reply(welcomeMessage);
 });
 
@@ -172,5 +191,11 @@ bot.launch()
   });
 
 // Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => {
+  bot.stop('SIGINT');
+  analytics.shutdown();
+});
+process.once('SIGTERM', () => {
+  bot.stop('SIGTERM');
+  analytics.shutdown();
+});

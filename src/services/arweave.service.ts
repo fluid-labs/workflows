@@ -1,10 +1,19 @@
 import { ArweaveUploadResponse, FileCostResponse, RecentFilesResponse, SendMessageRequest, TelegramFile } from '../types/api';
+import { PostHog } from 'posthog-node';
 
 const API_BASE_URL = 'https://api-flowweave.vesala.xyz/api';
 
 export class ArweaveService {
   private lastCheckedTimestamp: string | null = null;
   private chatId: string = "-4770042285"; // You might want to make this configurable
+  private analytics: PostHog;
+  private isPolling: boolean = false;
+
+  constructor() {
+    this.analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
+      host: 'https://us.i.posthog.com'
+    });
+  }
 
   async initialize(): Promise<void> {
     try {
@@ -17,7 +26,25 @@ export class ArweaveService {
       await fetch(`${API_BASE_URL}/telegram/start`, {
         method: 'POST',
       });
+
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'telegramSend_node_triggered',
+        properties: {
+          action: 'initialize',
+          status: 'success'
+        }
+      });
     } catch (error) {
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'telegramSend_node_triggered',
+        properties: {
+          action: 'initialize',
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      });
       console.error('Failed to initialize bot:', error);
       throw error;
     }
@@ -41,6 +68,7 @@ export class ArweaveService {
         : data.files.filter(file => file.arweaveUploadStatus === 'pending');
 
       this.lastCheckedTimestamp = data.timestamp;
+
       return newFiles;
     } catch (error) {
       console.error('Failed to check for new files:', error);
@@ -59,8 +87,30 @@ export class ArweaveService {
         throw new Error('Failed to get upload cost');
       }
 
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'arDrive_node_triggered',
+        properties: {
+          action: 'getCost',
+          status: 'success',
+          fileId,
+          cost: data.cost_estimate.ar,
+          sufficientFunds: data.cost_estimate.sufficient
+        }
+      });
+
       return data;
     } catch (error) {
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'arDrive_node_triggered',
+        properties: {
+          action: 'getCost',
+          status: 'failed',
+          fileId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      });
       console.error('Failed to get upload cost:', error);
       throw error;
     }
@@ -80,8 +130,29 @@ export class ArweaveService {
         throw new Error('Failed to upload to Arweave');
       }
 
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'arDrive_node_triggered',
+        properties: {
+          action: 'upload',
+          status: 'success',
+          fileId,
+          arweaveUrl: data.arweave_url
+        }
+      });
+
       return data;
     } catch (error) {
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'arDrive_node_triggered',
+        properties: {
+          action: 'upload',
+          status: 'failed',
+          fileId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      });
       console.error('Failed to upload to Arweave:', error);
       throw error;
     }
@@ -106,7 +177,27 @@ export class ArweaveService {
       if (!data.success) {
         throw new Error('Failed to send notification');
       }
+
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'telegramSend_node_triggered',
+        properties: {
+          action: 'notify',
+          status: 'success',
+          arweaveUrl
+        }
+      });
     } catch (error) {
+      this.analytics.capture({
+        distinctId: this.chatId,
+        event: 'telegramSend_node_triggered',
+        properties: {
+          action: 'notify',
+          status: 'failed',
+          arweaveUrl,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }
+      });
       console.error('Failed to send notification:', error);
       throw error;
     }
@@ -127,6 +218,7 @@ export class ArweaveService {
 
       // 3. Send notification
       await this.sendNotification(uploadResponse.arweave_url);
+
     } catch (error) {
       console.error(`Failed to process file ${file.id}:`, error);
       throw error;
@@ -134,11 +226,17 @@ export class ArweaveService {
   }
 
   async startPolling(intervalMs: number = 5000): Promise<void> {
-    try {
-      // Initialize the bot first
-      await this.initialize();
+    if (this.isPolling) {
+      return; // Already polling
+    }
 
-      // Start polling loop
+    try {
+      // Initialize the bot first (not part of polling)
+      await this.initialize();
+      
+      this.isPolling = true;
+
+      // Start polling loop (only for checkForNewFiles)
       setInterval(async () => {
         try {
           const newFiles = await this.checkForNewFiles();
@@ -153,8 +251,12 @@ export class ArweaveService {
         }
       }, intervalMs);
     } catch (error) {
+      this.isPolling = false;
       console.error('Failed to start polling:', error);
       throw error;
+    } finally {
+      // Ensure all events are sent before the process exits
+      await this.analytics.shutdown();
     }
   }
 } 
