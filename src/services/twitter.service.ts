@@ -78,28 +78,60 @@ export class TwitterService {
         throw new Error('Failed to fetch Twitter data');
       }
 
-      // Create the monitor in the database
-      const monitor = await this.prisma.twitterMonitor.create({
-        data: {
-          username,
+      // Check if a monitor already exists for this username
+      const existingMonitor = await this.prisma.twitterMonitor.findUnique({
+        where: { username },
+      });
+
+      let monitor: { id: string; username: string; chatId: string };
+      if (existingMonitor) {
+        // If the monitor exists with a different chatId, update it
+        if (existingMonitor.chatId !== chatId) {
+          monitor = await this.prisma.twitterMonitor.update({
+            where: { username },
+            data: { chatId },
+          });
+          await this.bot.telegram.sendMessage(
+            chatId,
+            `Updated monitoring for Twitter account @${username}. You'll receive notifications for new tweets.`
+          );
+        } else {
+          // If the same user is trying to monitor the same account, just notify them
+          await this.bot.telegram.sendMessage(
+            chatId,
+            `You're already monitoring @${username}. You'll continue to receive notifications for new tweets.`
+          );
+          return;
+        }
+      } else {
+        // Create new monitor if none exists
+        monitor = await this.prisma.twitterMonitor.create({
+          data: {
+            username,
+            chatId,
+          },
+        });
+
+        // Store initial tweets
+        const tweetData = data.data.tweets.map(tweet => ({
+          id: tweet.id,
+          monitorId: monitor.id,
+          text: tweet.text,
+          createdAt: new Date(tweet.created_at),
+          metrics: tweet.public_metrics as Prisma.JsonObject,
+          mediaUrls: tweet.media?.map(m => m.url) || [],
+        }));
+
+        // Use createMany for better performance
+        await this.prisma.tweetRecord.createMany({
+          data: tweetData,
+        });
+
+        await this.bot.telegram.sendMessage(
           chatId,
-        },
-      });
-
-      // Store initial tweets
-      const tweetData = data.data.tweets.map(tweet => ({
-        id: tweet.id,
-        monitorId: monitor.id,
-        text: tweet.text,
-        createdAt: new Date(tweet.created_at),
-        metrics: tweet.public_metrics as Prisma.JsonObject,
-        mediaUrls: tweet.media?.map(m => m.url) || [],
-      }));
-
-      // Use createMany for better performance
-      await this.prisma.tweetRecord.createMany({
-        data: tweetData,
-      });
+          `Started monitoring Twitter account @${username}. You'll receive notifications for new tweets.`
+        );
+      }
 
       this.analytics.capture({
         distinctId: chatId,
@@ -107,13 +139,9 @@ export class TwitterService {
         properties: {
           username,
           initialTweetCount: data.data.tweets.length,
+          action: existingMonitor ? 'updated' : 'created',
         },
       });
-
-      await this.bot.telegram.sendMessage(
-        chatId,
-        `Started monitoring Twitter account @${username}. You'll receive notifications for new tweets.`
-      );
     } catch (error) {
       console.error('Failed to add Twitter monitor:', error);
       throw error;
