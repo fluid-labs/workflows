@@ -100,7 +100,7 @@ availableWorkflows.forEach(workflow => {
       if (workflow.type === WorkflowType.ARWEAVE_UPLOAD) {
         await initializeArweaveService();
       }
-      await ctx.reply(`You've selected the ${workflow.name} workflow. Please send your media file (image, document, etc.).`);
+      await ctx.reply(`You've selected the ${workflow.name} workflow. Please send your media file (image, document, etc.) to @aogen_bot.`);
       ctx.session = { selectedWorkflow: workflow };
     } catch (error) {
       console.error('Error initializing workflow:', error);
