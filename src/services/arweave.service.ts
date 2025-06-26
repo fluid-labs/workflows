@@ -1,18 +1,33 @@
 import { ArweaveUploadResponse, FileCostResponse, RecentFilesResponse, SendMessageRequest, TelegramFile } from '../types/api';
 import { PostHog } from 'posthog-node';
+import { Telegraf, Context } from 'telegraf';
 
 const API_BASE_URL = 'https://api-flowweave.vesala.xyz/api';
 
+// Define the context type to match index.ts
+interface BotContext extends Context {
+  session: {
+    selectedWorkflow?: any;
+  };
+}
+
 export class ArweaveService {
   private lastCheckedTimestamp: string | null = null;
-  private chatId: string = "-4770042285"; // You might want to make this configurable
   private analytics: PostHog;
   private isPolling: boolean = false;
+  private bot: Telegraf<BotContext>;
+  private userChatId: string | null = null;
 
-  constructor() {
+  constructor(bot: Telegraf<BotContext>) {
     this.analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
       host: 'https://us.i.posthog.com'
     });
+    this.bot = bot;
+  }
+
+  // Method to set the user's chat ID when they initiate a workflow
+  setUserChatId(chatId: string) {
+    this.userChatId = chatId;
   }
 
   async initialize(): Promise<void> {
@@ -28,7 +43,7 @@ export class ArweaveService {
       });
 
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'telegramSend_node_triggered',
         properties: {
           action: 'initialize',
@@ -37,7 +52,7 @@ export class ArweaveService {
       });
     } catch (error) {
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'telegramSend_node_triggered',
         properties: {
           action: 'initialize',
@@ -88,7 +103,7 @@ export class ArweaveService {
       }
 
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'arDrive_node_triggered',
         properties: {
           action: 'getCost',
@@ -102,7 +117,7 @@ export class ArweaveService {
       return data;
     } catch (error) {
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'arDrive_node_triggered',
         properties: {
           action: 'getCost',
@@ -131,7 +146,7 @@ export class ArweaveService {
       }
 
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'arDrive_node_triggered',
         properties: {
           action: 'upload',
@@ -144,7 +159,7 @@ export class ArweaveService {
       return data;
     } catch (error) {
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'arDrive_node_triggered',
         properties: {
           action: 'upload',
@@ -160,26 +175,15 @@ export class ArweaveService {
 
   async sendNotification(arweaveUrl: string): Promise<void> {
     try {
-      const message: SendMessageRequest = {
-        chatId: this.chatId,
-        message: `File uploaded to Arweave: ${arweaveUrl}`,
-      };
-
-      const response = await fetch(`${API_BASE_URL}/proxy/telegram/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(message),
-      });
-
-      const data = await response.json() as { success: boolean };
-      if (!data.success) {
-        throw new Error('Failed to send notification');
+      const message = `File uploaded to Arweave: ${arweaveUrl}`;
+      
+      // Send message using the bot instance to the stored user chat ID
+      if (this.userChatId) {
+        await this.bot.telegram.sendMessage(this.userChatId, message);
       }
 
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'telegramSend_node_triggered',
         properties: {
           action: 'notify',
@@ -189,7 +193,7 @@ export class ArweaveService {
       });
     } catch (error) {
       this.analytics.capture({
-        distinctId: this.chatId,
+        distinctId: this.userChatId || 'unknown',
         event: 'telegramSend_node_triggered',
         properties: {
           action: 'notify',
@@ -210,6 +214,9 @@ export class ArweaveService {
       
       // Check if we have sufficient funds
       if (!costResponse.cost_estimate.sufficient) {
+        if (this.userChatId) {
+          await this.bot.telegram.sendMessage(this.userChatId, 'Insufficient funds for upload');
+        }
         throw new Error('Insufficient funds for upload');
       }
 

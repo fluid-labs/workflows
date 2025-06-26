@@ -25,7 +25,7 @@ const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN!);
 // Add session middleware
 bot.use(session());
 
-const arweaveService = new ArweaveService();
+const arweaveService = new ArweaveService(bot);
 
 // Initialize the Arweave service when the bot starts
 let arweaveServiceInitialized = false;
@@ -33,8 +33,7 @@ let arweaveServiceInitialized = false;
 async function initializeArweaveService() {
   if (!arweaveServiceInitialized) {
     try {
-      await arweaveService.initialize();
-      arweaveService.startPolling()
+      await arweaveService.startPolling()
         .catch(error => {
           console.error('Error in Arweave service polling:', error);
         });
@@ -93,12 +92,38 @@ bot.command('workflows', async (ctx: BotContext) => {
   await ctx.reply('Available Workflows:\n\n' + workflowList);
 });
 
+// Help command
+bot.command('help', async (ctx: BotContext) => {
+  try {
+    const helpMessage = 'FlowWeave Bot Help 📚\n\n' +
+      'Available Commands:\n' +
+      '/start - Start the bot\n' +
+      '/workflows - View available workflows\n' +
+      '/help - Show this help message\n\n' +
+      'To use a workflow:\n' +
+      '1. Use /workflows to see available workflows\n' +
+      '2. Select a workflow using its command (e.g., /execute_arweave)\n' +
+      '3. Follow the instructions in the workflow';
+    
+    await ctx.reply(helpMessage);
+  } catch (error) {
+    console.error('Error sending help message:', error);
+    await ctx.reply('Sorry, there was an error displaying the help message. Please try again.');
+  }
+});
+
 // Handle workflow execution commands
 availableWorkflows.forEach(workflow => {
   bot.command(`execute_${workflow.id}`, async (ctx: BotContext) => {
     try {
       if (workflow.type === WorkflowType.ARWEAVE_UPLOAD) {
         await initializeArweaveService();
+        // Store the user's chat ID for notifications
+        if (ctx.chat?.id) {
+          arweaveService.setUserChatId(ctx.chat.id.toString());
+        } else {
+          throw new Error('Chat ID not found');
+        }
       }
       await ctx.reply(`You've selected the ${workflow.name} workflow. Please send your media file (image, document, etc.) to @aogen_bot.`);
       ctx.session = { selectedWorkflow: workflow };
@@ -117,7 +142,7 @@ bot.on('message', async (ctx) => {
     
     if (selectedWorkflow) {
       // If a workflow is selected, show the media-only message
-      await ctx.reply('This workflow only supports media files (images, documents, etc.). Please send a media file or use /workflows to select a different workflow.');
+      await ctx.reply('This workflow only supports media files (images, documents, etc.). Please send a media file to @aogen_bot or use /workflows to select a different workflow.');
     } else {
       // If no workflow is selected, guide the user to select one
       await ctx.reply('Please use /workflows to see available workflows and select one to get started.');
@@ -156,30 +181,13 @@ async function handleMediaMessage(ctx: BotContext, type: string) {
 
   try {
     await ctx.reply(`Processing your ${type} with ${selectedWorkflow.name}...`);
-    // The Arweave service is already polling, so it will pick up the file automatically
+    // Since we're not handling media in this bot anymore, we don't need to set any context
     await ctx.reply('Your file has been received and is being processed. You will be notified when the upload is complete.');
   } catch (error) {
     console.error(`Error processing ${type}:`, error);
     await ctx.reply('Sorry, there was an error processing your file. Please try again.');
   }
 }
-
-// Help command
-bot.command('help', async (ctx: BotContext) => {
-  const helpMessage = 'FlowWeave Bot Help 📚\n\n' +
-    'Available Commands:\n' +
-    '/start - Start the bot\n' +
-    '/workflows - View available workflows\n' +
-    '/help - Show this help message\n\n' +
-    'To use a workflow:\n' +
-    '1. Use /workflows to see available workflows\n' +
-    '2. Select a workflow using its command (e.g., /execute_arweave)\n' +
-    '3. Send your media file (image, document, etc.) to be processed';
-  
-  // Initialize session
-  ctx.session = {};
-  await ctx.reply(helpMessage);
-});
 
 // Start the bot
 bot.launch()
