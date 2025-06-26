@@ -3,6 +3,7 @@ import { message } from 'telegraf/filters';
 import { config } from 'dotenv';
 import { Workflow, WorkflowType } from './types/workflow';
 import { ArweaveService } from './services/arweave.service';
+import { TwitterService } from './services/twitter.service';
 import { PostHog } from 'posthog-node';
 
 // Load environment variables
@@ -17,6 +18,7 @@ const analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
 interface BotContext extends Context {
   session: {
     selectedWorkflow?: Workflow;
+    twitterUsername?: string;
   };
 }
 
@@ -26,26 +28,31 @@ const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN!);
 bot.use(session());
 
 const arweaveService = new ArweaveService(bot);
+const twitterService = new TwitterService(bot);
 
-// Initialize the Arweave service when the bot starts
-let arweaveServiceInitialized = false;
+// Initialize the services when the bot starts
+let servicesInitialized = false;
 
-async function initializeArweaveService() {
-  if (!arweaveServiceInitialized) {
+async function initializeServices() {
+  if (!servicesInitialized) {
     try {
       await arweaveService.startPolling()
         .catch(error => {
           console.error('Error in Arweave service polling:', error);
         });
-      arweaveServiceInitialized = true;
+      await twitterService.startPolling()
+        .catch(error => {
+          console.error('Error in Twitter service polling:', error);
+        });
+      servicesInitialized = true;
     } catch (error) {
-      console.error('Failed to initialize Arweave service:', error);
+      console.error('Failed to initialize services:', error);
       throw error;
     }
   }
 }
 
-// Sample workflows - replace with your actual workflow data
+// Sample workflows
 const availableWorkflows: Workflow[] = [
   {
     id: 'arweave',
@@ -53,7 +60,12 @@ const availableWorkflows: Workflow[] = [
     description: 'Upload media files (images, documents, etc.) to Arweave and receive a notification',
     type: WorkflowType.ARWEAVE_UPLOAD,
   },
-  // Add more workflows here
+  {
+    id: 'twitter',
+    name: 'Twitter Monitor',
+    description: 'Monitor a Twitter account for new posts and receive notifications',
+    type: WorkflowType.TWITTER_MONITOR,
+  },
 ];
 
 // Command to start the bot
@@ -100,10 +112,14 @@ bot.command('help', async (ctx: BotContext) => {
       '/start - Start the bot\n' +
       '/workflows - View available workflows\n' +
       '/help - Show this help message\n\n' +
+      'Workflow-specific commands:\n' +
+      '/execute_arweave - Upload files to Arweave\n' +
+      '/execute_twitter - Monitor a Twitter account\n' +
+      '/stop_twitter - Stop monitoring a Twitter account\n\n' +
       'To use a workflow:\n' +
       '1. Use /workflows to see available workflows\n' +
-      '2. Select a workflow using its command (e.g., /execute_arweave)\n' +
-      '3. Follow the instructions in the workflow';
+      '2. Select a workflow using its command\n' +
+      '3. Follow the instructions for the specific workflow';
     
     await ctx.reply(helpMessage);
   } catch (error) {
@@ -117,21 +133,42 @@ availableWorkflows.forEach(workflow => {
   bot.command(`execute_${workflow.id}`, async (ctx: BotContext) => {
     try {
       if (workflow.type === WorkflowType.ARWEAVE_UPLOAD) {
-        await initializeArweaveService();
+        await initializeServices();
         // Store the user's chat ID for notifications
         if (ctx.chat?.id) {
           arweaveService.setUserChatId(ctx.chat.id.toString());
         } else {
           throw new Error('Chat ID not found');
         }
+        await ctx.reply(`You've selected the ${workflow.name} workflow. Please send your media file (image, document, etc.) to @aogen_bot.`);
+      } else if (workflow.type === WorkflowType.TWITTER_MONITOR) {
+        await initializeServices();
+        await ctx.reply('Please enter the Twitter username you want to monitor (without the @ symbol):');
+        ctx.session = { selectedWorkflow: workflow };
       }
-      await ctx.reply(`You've selected the ${workflow.name} workflow. Please send your media file (image, document, etc.) to @aogen_bot.`);
-      ctx.session = { selectedWorkflow: workflow };
     } catch (error) {
       console.error('Error initializing workflow:', error);
       await ctx.reply('Sorry, there was an error initializing the workflow. Please try again.');
     }
   });
+});
+
+// Command to stop monitoring a Twitter account
+bot.command('stop_twitter', async (ctx: BotContext) => {
+  try {
+    await ctx.reply('Please enter the Twitter username you want to stop monitoring (without the @ symbol):');
+    ctx.session = { 
+      selectedWorkflow: {
+        id: 'twitter_stop',
+        name: 'Stop Twitter Monitor',
+        description: 'Stop monitoring a Twitter account',
+        type: WorkflowType.TWITTER_MONITOR
+      }
+    };
+  } catch (error) {
+    console.error('Error stopping Twitter monitor:', error);
+    await ctx.reply('Sorry, there was an error. Please try again.');
+  }
 });
 
 // Handle text messages
@@ -140,7 +177,24 @@ bot.on('message', async (ctx) => {
   if ('text' in ctx.message && !ctx.message.text.startsWith('/')) {
     const selectedWorkflow = ctx.session?.selectedWorkflow;
     
-    if (selectedWorkflow) {
+    if (selectedWorkflow?.type === WorkflowType.TWITTER_MONITOR) {
+      try {
+        const username = ctx.message.text.trim().replace('@', '');
+        const chatId = ctx.chat.id.toString();
+
+        if (selectedWorkflow.id === 'twitter_stop') {
+          await twitterService.removeMonitor(username, chatId);
+        } else {
+          await twitterService.addMonitor(username, chatId);
+        }
+      } catch (error) {
+        console.error('Error handling Twitter workflow:', error);
+        await ctx.reply('Sorry, there was an error processing your request. Please try again.');
+      } finally {
+        // Clear the session
+        ctx.session = {};
+      }
+    } else if (selectedWorkflow) {
       // If a workflow is selected, show the media-only message
       await ctx.reply('This workflow only supports media files (images, documents, etc.). Please send a media file to @aogen_bot or use /workflows to select a different workflow.');
     } else {
@@ -150,22 +204,19 @@ bot.on('message', async (ctx) => {
   }
 });
 
-// Handle photo messages
+// Handle media messages
 bot.on(message('photo'), async (ctx: BotContext) => {
   await handleMediaMessage(ctx, 'photo');
 });
 
-// Handle document messages
 bot.on(message('document'), async (ctx: BotContext) => {
   await handleMediaMessage(ctx, 'document');
 });
 
-// Handle video messages
 bot.on(message('video'), async (ctx: BotContext) => {
   await handleMediaMessage(ctx, 'video');
 });
 
-// Handle audio messages
 bot.on(message('audio'), async (ctx: BotContext) => {
   await handleMediaMessage(ctx, 'audio');
 });
