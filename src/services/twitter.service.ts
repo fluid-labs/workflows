@@ -194,6 +194,9 @@ export class TwitterService {
           }
 
           message += `\n\nMetrics:\n👍 ${tweet.public_metrics.like_count} likes\n🔄 ${tweet.public_metrics.retweet_count} retweets\n💬 ${tweet.public_metrics.reply_count} replies`;
+          
+          // Add tweet link
+          message += `\n\nView tweet: https://twitter.com/${monitor.username}/status/${tweet.id}`;
 
           await this.bot.telegram.sendMessage(monitor.chatId, message);
 
