@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -33,4 +32,52 @@ model TweetRecord {
   notifiedAt     DateTime      @default(now())
   metrics        Json          // For storing retweet_count, like_count, etc.
   mediaUrls      String[]      // For storing URLs of any media attached to the tweet
+}
+
+// Discord-specific models for Discord bot integration
+model DiscordChannelMonitor {
+  id              String                    @id @default(cuid())
+  guildId         String                    // Discord server ID
+  channelId       String                    // Discord channel ID
+  channelName     String
+  guildName       String
+  isActive        Boolean                   @default(true)
+  lastCheckedAt   DateTime                  @default(now())
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  subscribers     DiscordSubscription[]
+  messages        DiscordMessageRecord[]
+
+  @@unique([guildId, channelId])
+}
+
+model DiscordSubscription {
+  id                String                   @id @default(cuid())
+  discordUserId     String                   // Discord user ID who created the subscription
+  discordUsername   String                   // Discord username
+  telegramUsername  String                   // Telegram username to send notifications to
+  telegramChatId    String?                  // Telegram chat ID (optional, can be looked up)
+  isActive          Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  
+  // Relationship to monitored channel
+  channelMonitor    DiscordChannelMonitor    @relation(fields: [channelMonitorId], references: [id], onDelete: Cascade)
+  channelMonitorId  String
+
+  @@unique([discordUserId, channelMonitorId])
+}
+
+model DiscordMessageRecord {
+  id                 String                 @id // Discord message ID
+  channelMonitor     DiscordChannelMonitor  @relation(fields: [channelMonitorId], references: [id], onDelete: Cascade)
+  channelMonitorId   String
+  authorId           String                 // Discord author ID
+  authorUsername     String                 // Discord author username
+  content            String                 // Message content
+  attachments        Json                   // Message attachments (URLs, etc.)
+  embeds             Json                   // Message embeds
+  createdAt          DateTime               // When the message was created on Discord
+  notifiedAt         DateTime               @default(now()) // When we processed/notified about this message
+  notificationsSent  Int                    @default(0) // Count of notifications sent for this message
 }
