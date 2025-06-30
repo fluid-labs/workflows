@@ -81,3 +81,65 @@ model DiscordMessageRecord {
   notifiedAt         DateTime               @default(now()) // When we processed/notified about this message
   notificationsSent  Int                    @default(0) // Count of notifications sent for this message
 }
+
+// Discord Events to Calendar Sync Models
+model DiscordEventMonitor {
+  id              String                        @id @default(cuid())
+  guildId         String                        // Discord server ID
+  guildName       String
+  isActive        Boolean                       @default(true)
+  lastCheckedAt   DateTime                      @default(now())
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  subscribers     DiscordEventSubscription[]
+  events          DiscordEventRecord[]
+
+  @@unique([guildId])
+}
+
+model DiscordEventSubscription {
+  id                    String                   @id @default(cuid())
+  discordUserId         String                   // Discord user ID who created the subscription
+  discordUsername       String                   // Discord username
+  telegramUsername      String                   // Telegram username
+  telegramChatId        String?                  // Telegram chat ID
+  googleCalendarId      String?                  // Google Calendar ID to sync to
+  googleAccessToken     String?                  // Google OAuth access token
+  googleRefreshToken    String?                  // Google OAuth refresh token
+  isActive              Boolean                  @default(true)
+  syncToCalendar        Boolean                  @default(true)
+  sendNotifications     Boolean                  @default(true)
+  reminderMinutes       Int                      @default(30) // Minutes before event to send reminder
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  
+  // Relationship to event monitor
+  eventMonitor          DiscordEventMonitor      @relation(fields: [eventMonitorId], references: [id], onDelete: Cascade)
+  eventMonitorId        String
+
+  @@unique([discordUserId, eventMonitorId])
+}
+
+model DiscordEventRecord {
+  id                    String                   @id // Discord event ID
+  eventMonitor          DiscordEventMonitor      @relation(fields: [eventMonitorId], references: [id], onDelete: Cascade)
+  eventMonitorId        String
+  name                  String                   // Event name
+  description           String?                  // Event description
+  scheduledStartTime    DateTime                 // When the event is scheduled to start
+  scheduledEndTime      DateTime?                // When the event is scheduled to end
+  location              String?                  // Event location
+  creatorId             String                   // Discord user ID who created the event
+  creatorUsername       String                   // Discord username of creator
+  eventType             String                   // STAGE_INSTANCE, VOICE, EXTERNAL
+  status                String                   // SCHEDULED, ACTIVE, COMPLETED, CANCELLED
+  coverImage            String?                  // Event cover image URL
+  participantCount      Int                      @default(0)
+  calendarEventId       String?                  // Google Calendar event ID if synced
+  discordCreatedAt      DateTime                 // When the event was created on Discord
+  notifiedAt            DateTime                 @default(now()) // When we processed this event
+  lastSyncedAt          DateTime?                // Last time this was synced to calendar
+  notificationsSent     Int                      @default(0)
+  
+  @@unique([id])
+}
