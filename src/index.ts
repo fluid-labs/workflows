@@ -4,6 +4,8 @@ import { config } from "dotenv";
 import { Workflow, WorkflowType } from "./types/workflow";
 import { ArweaveService } from "./services/arweave.service";
 import { TwitterService } from "./services/twitter.service";
+import { DiscordEventCalendarService } from "./services/discord-event-calendar.service";
+import { startOAuthServer } from "./oauth-server";
 import { PostHog } from "posthog-node";
 import { PrismaClient } from "@prisma/client";
 
@@ -33,6 +35,7 @@ bot.use(session());
 
 const arweaveService = new ArweaveService(bot);
 const twitterService = new TwitterService(bot);
+let discordEventCalendarService: DiscordEventCalendarService;
 
 // Initialize the services when the bot starts
 let servicesInitialized = false;
@@ -75,6 +78,13 @@ const availableWorkflows: Workflow[] = [
         name: "Discord Notifications",
         description: "Receive notifications from monitored Discord channels",
         type: WorkflowType.DISCORD_MONITOR,
+    },
+    {
+        id: "calendar_sync",
+        name: "Discord Event Calendar Sync",
+        description:
+            "Automatically sync Discord events to your Google Calendar with reminders",
+        type: WorkflowType.DISCORD_EVENT_CALENDAR_SYNC,
     },
 ];
 
@@ -196,7 +206,8 @@ bot.command("help", async (ctx: BotContext) => {
             "Workflow-specific commands:\n" +
             "/execute_arweave - Upload files to Arweave\n" +
             "/execute_twitter - Monitor a Twitter account\n" +
-            "/stop_twitter - Stop monitoring a Twitter account\n\n" +
+            "/stop_twitter - Stop monitoring a Twitter account\n" +
+            "/execute_calendar_sync - Setup Discord event calendar sync\n\n" +
             "To use a workflow:\n" +
             "1. Use /workflows to see available workflows\n" +
             "2. Select a workflow using its command\n" +
@@ -207,6 +218,76 @@ bot.command("help", async (ctx: BotContext) => {
         console.error("Error sending help message:", error);
         await ctx.reply(
             "Sorry, there was an error displaying the help message. Please try again."
+        );
+    }
+});
+
+// Command to setup Discord event calendar sync
+bot.command("execute_calendar_sync", async (ctx: BotContext) => {
+    try {
+        const telegramUsername = ctx.from?.username;
+        const chatId = ctx.chat?.id?.toString();
+
+        if (!telegramUsername) {
+            await ctx.reply(
+                "❌ You need to set a Telegram username first! Go to Settings → Username in Telegram."
+            );
+            return;
+        }
+
+        if (!chatId) {
+            await ctx.reply("❌ Could not get your chat ID. Please try again.");
+            return;
+        }
+
+        // Initialize Discord Event Calendar Service if not already done
+        if (!discordEventCalendarService) {
+            discordEventCalendarService = new DiscordEventCalendarService(bot);
+        }
+
+        // Get the real OAuth URL
+        const authUrl =
+            await discordEventCalendarService.initializeCalendarSync(
+                chatId,
+                telegramUsername
+            );
+
+        await ctx.reply(
+            `🗓️ **Discord Event Calendar Sync Setup**\n\n` +
+                `This workflow will automatically sync Discord events to your Google Calendar!\n\n` +
+                `📋 **Correct Setup Order:**\n` +
+                `1. **Discord Admin:** Use \`/setup-event-monitoring\` in your server ✅\n` +
+                `2. **You:** Use \`/calendar-sync telegram-username:${telegramUsername}\` in Discord ✅\n` +
+                `3. **You:** Click the Google Calendar authorization link below\n` +
+                `4. Grant calendar permissions\n` +
+                `5. Events will automatically sync to your calendar!\n\n` +
+                `🔗 **Google Calendar Authorization:**\n` +
+                `[Click here to authorize Google Calendar](${authUrl})\n\n` +
+                `💡 **Important:** Make sure you've completed steps 1-2 in Discord first, otherwise the calendar connection won't link to any Discord servers!\n\n` +
+                `✨ **Features:**\n` +
+                `• Automatic event sync from Discord\n` +
+                `• Customizable reminders (30 min before events)\n` +
+                `• Real-time notifications via Telegram\n` +
+                `• Support for multiple Discord servers`,
+            {
+                parse_mode: "Markdown",
+                link_preview_options: { is_disabled: true },
+            }
+        );
+
+        // Analytics
+        analytics.capture({
+            distinctId: ctx.from?.id?.toString() || "unknown",
+            event: "Calendar_sync_initiated",
+            properties: {
+                telegramUsername: telegramUsername,
+                chatId: chatId,
+            },
+        });
+    } catch (error) {
+        console.error("Error setting up calendar sync:", error);
+        await ctx.reply(
+            "❌ Sorry, there was an error setting up calendar sync. Please try again."
         );
     }
 });
@@ -232,6 +313,13 @@ availableWorkflows.forEach((workflow) => {
                     "Please enter the Twitter username you want to monitor (without the @ symbol):"
                 );
                 ctx.session = { selectedWorkflow: workflow };
+            } else if (
+                workflow.type === WorkflowType.DISCORD_EVENT_CALENDAR_SYNC
+            ) {
+                // This is handled by the dedicated command above
+                await ctx.reply(
+                    "Please use /execute_calendar_sync to setup Discord event calendar sync."
+                );
             }
         } catch (error) {
             console.error("Error initializing workflow:", error);
@@ -343,10 +431,13 @@ async function handleMediaMessage(ctx: BotContext, type: string) {
     }
 }
 
+// Start the OAuth server for Google Calendar integration
+startOAuthServer();
+
 // Start the bot
 bot.launch()
     .then(() => {
-        console.log("Bot is running...");
+        console.log("🤖 Telegram Bot is running...");
     })
     .catch((err) => {
         console.error("Error starting bot:", err);
