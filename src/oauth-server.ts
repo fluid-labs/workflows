@@ -112,12 +112,23 @@ app.get("/health", (req, res) => {
 // Start the OAuth server
 export function startOAuthServer() {
     app.listen(port, "0.0.0.0", () => {
+        const isProduction = process.env.NODE_ENV === "production";
+        const domain = process.env.DOMAIN || "api-flowweave.vesala.xyz";
+
         console.log(`🔗 OAuth server running at:`);
-        console.log(`   • http://localhost:${port}`);
-        console.log(`   • http://127.0.0.1:${port}`);
-        console.log(
-            `📋 Google Calendar callback URL: http://127.0.0.1:${port}/auth/google/callback`
-        );
+        if (isProduction) {
+            console.log(`   • https://${domain}/auth`);
+            console.log(`   • https://${domain}/health`);
+            console.log(
+                `📋 Google Calendar callback URL: https://${domain}/auth/google/callback`
+            );
+        } else {
+            console.log(`   • http://localhost:${port}`);
+            console.log(`   • http://127.0.0.1:${port}`);
+            console.log(
+                `📋 Google Calendar callback URL: http://127.0.0.1:${port}/auth/google/callback`
+            );
+        }
     });
 }
 
