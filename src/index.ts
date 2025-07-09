@@ -63,7 +63,7 @@ const availableWorkflows: Workflow[] = [
         id: "arweave",
         name: "Arweave Upload",
         description:
-            "Upload media files (images, documents, etc.) to Arweave and receive a notification",
+            "Upload media files (images, documents, etc.) to Arweave and receive a notification with a link to the uploaded file",
         type: WorkflowType.ARWEAVE_UPLOAD,
     },
     {
@@ -88,31 +88,53 @@ const availableWorkflows: Workflow[] = [
     },
 ];
 
+// Helper function to escape special characters for MarkdownV2
+function escapeMarkdown(text: string): string {
+    return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
 // Command to start the bot
 bot.command("start", async (ctx: BotContext) => {
-    const welcomeMessage =
-        "Welcome to FlowWeave Bot! 🚀\n\n" +
-        "I can help you execute various workflows. Here are the available commands:\n\n" +
-        "/workflows - View available workflows\n" +
-        "/register_discord - Link your Discord account for notifications\n" +
-        "/help - Show this help message";
+    try {
+        // Initialize session
+        ctx.session = {};
 
-    // Initialize session
-    ctx.session = {};
+        // Get the help message by calling the help command handler
+        const baseMessage =
+            "🎉 Welcome to FlowWeave Bot\\! 🚀\n\n" +
+            "🤖 About FlowWeave:\n" +
+            "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
+            "📞 Our Socials:\n" +
+            "• Website: [flowweave\\.xyz](https://flowweave\\.xyz)\n" +
+            "• Discord: [Join our server](https://discord\\.gg/XT2D9k53Nk)\n" +
+            "• GitHub: [flowweave](https://github\\.com/fluid-labs)\n\n";
 
-    // Capture bot start event
-    analytics.capture({
-        distinctId: ctx.from?.id?.toString() || "unknown",
-        event: "Bot_started",
-        properties: {
-            action: "start_bot",
-            username: ctx.from?.username,
-            firstName: ctx.from?.first_name,
-            lastName: ctx.from?.last_name,
-        },
-    });
+        // Capture bot start event
+        analytics.capture({
+            distinctId: ctx.from?.id?.toString() || "unknown",
+            event: "Bot_started",
+            properties: {
+                action: "start_bot",
+                username: ctx.from?.username,
+                firstName: ctx.from?.first_name,
+                lastName: ctx.from?.last_name,
+            },
+        });
 
-    await ctx.reply(welcomeMessage);
+        // Send the welcome message with a button to view workflows
+        await ctx.reply(baseMessage, {
+            parse_mode: "MarkdownV2",
+            link_preview_options: { is_disabled: true },
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "📋 Workflow List", callback_data: "show_workflows" }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error("Error in start command:", error);
+        await ctx.reply("Sorry, there was an error starting the bot\\. Please try again\\.");
+    }
 });
 
 // Command to register Discord account for notifications
@@ -182,38 +204,46 @@ bot.command("register_discord", async (ctx: BotContext) => {
 
 // Command to list available workflows
 bot.command("workflows", async (ctx: BotContext) => {
-    const workflowList = availableWorkflows
-        .map(
-            (workflow) =>
-                `🔹 ${workflow.name}\n${workflow.description}\nUse /execute_${workflow.id} to run this workflow`
-        )
-        .join("\n\n");
+    try {
+        const message = "🔧 *Available Workflows*\n\nSelect a workflow to get started:";
+        
+        // Create a button for each workflow
+        const buttons = availableWorkflows.map(workflow => [{
+            text: `${workflow.name}`,
+            callback_data: `execute_${workflow.id}`
+        }]);
 
-    // Initialize session
-    ctx.session = {};
-    await ctx.reply("Available Workflows:\n\n" + workflowList);
+        // Initialize session
+        ctx.session = {};
+        await ctx.reply(message, {
+            parse_mode: "MarkdownV2",
+            link_preview_options: { is_disabled: true },
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+    } catch (error) {
+        console.error("Error listing workflows:", error);
+        await ctx.reply("Sorry, there was an error listing the workflows\\. Please try again\\.");
+    }
 });
 
 // Help command
 bot.command("help", async (ctx: BotContext) => {
     try {
         const helpMessage =
-            "FlowWeave Bot Help 📚\n\n" +
-            "Available Commands:\n" +
-            "/start - Start the bot\n" +
-            "/workflows - View available workflows\n" +
-            "/help - Show this help message\n\n" +
-            "Workflow-specific commands:\n" +
-            "/execute_arweave - Upload files to Arweave\n" +
-            "/execute_twitter - Monitor a Twitter account\n" +
-            "/stop_twitter - Stop monitoring a Twitter account\n" +
-            "/execute_calendar_sync - Setup Discord event calendar sync\n\n" +
-            "To use a workflow:\n" +
-            "1. Use /workflows to see available workflows\n" +
-            "2. Select a workflow using its command\n" +
-            "3. Follow the instructions for the specific workflow";
+        "🎉 Welcome to FlowWeave Bot\\! 🚀\n\n" +
+        "🤖 About FlowWeave:\n" +
+        "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
+        "📞 Our Socials:\n" +
+        "• Website: [flowweave\\.xyz](https://flowweave\\.xyz)\n" +
+        "• Discord: [Join our server](https://discord\\.gg/XT2D9k53Nk)\n" +
+        "• GitHub: [flowweave](https://github\\.com/fluid-labs)\n\n";
 
-        await ctx.reply(helpMessage);
+        await ctx.reply(helpMessage, {
+            parse_mode: "Markdown",
+            link_preview_options: { is_disabled: true }
+        });
     } catch (error) {
         console.error("Error sending help message:", error);
         await ctx.reply(
@@ -430,6 +460,245 @@ async function handleMediaMessage(ctx: BotContext, type: string) {
         );
     }
 }
+
+// Handle callback queries
+bot.action("show_workflows", async (ctx) => {
+    try {
+        const message = "🔧 *Available Workflows*\n\nSelect a workflow to get started:";
+        
+        // Create buttons in a 2x2 grid
+        const buttons = [];
+        for (let i = 0; i < availableWorkflows.length; i += 2) {
+            const row = [];
+            // Add first button in the row
+            row.push({
+                text: availableWorkflows[i].name,
+                callback_data: `execute_${availableWorkflows[i].id}`
+            });
+            // Add second button if it exists
+            if (i + 1 < availableWorkflows.length) {
+                row.push({
+                    text: availableWorkflows[i + 1].name,
+                    callback_data: `execute_${availableWorkflows[i + 1].id}`
+                });
+            }
+            buttons.push(row);
+        }
+        
+        // Add the back button at the bottom
+        buttons.push([{ text: "🔙 Back to Start", callback_data: "show_help" }]);
+
+        await ctx.editMessageText(message, {
+            parse_mode: "MarkdownV2",
+            link_preview_options: { is_disabled: true },
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+    } catch (error) {
+        console.error("Error showing workflows:", error);
+        await ctx.reply("Sorry, there was an error displaying the workflows\\. Please try /workflows instead\\.");
+    }
+});
+
+// Add handlers for each workflow button
+availableWorkflows.forEach(workflow => {
+    // Handler for showing workflow details
+    bot.action(`execute_${workflow.id}`, async (ctx) => {
+        try {
+            const name = escapeMarkdown(workflow.name);
+            const description = escapeMarkdown(workflow.description);
+            const message = `*${name}*\n\n${description}\n\n💡 Click Execute to start this workflow`;
+
+            await ctx.reply(message, {
+                parse_mode: "MarkdownV2",
+                link_preview_options: { is_disabled: true },
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "▶️ Execute", callback_data: `run_${workflow.id}` }]
+                    ]
+                }
+            });
+
+            // Send a callback query answer to remove the loading state
+            await ctx.answerCbQuery();
+        } catch (error) {
+            console.error(`Error showing workflow details ${workflow.id}:`, error);
+            await ctx.reply(
+                "Sorry, there was an error displaying the workflow details\\. Please try again\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+        }
+    });
+
+    // Handler for executing the workflow
+    bot.action(`run_${workflow.id}`, async (ctx) => {
+        try {
+            if (workflow.type === WorkflowType.ARWEAVE_UPLOAD) {
+                await initializeServices();
+                // Store the user's chat ID for notifications
+                if (ctx.chat?.id) {
+                    arweaveService.setUserChatId(ctx.chat.id.toString());
+                } else {
+                    throw new Error("Chat ID not found");
+                }
+                await ctx.reply(
+                    `You've selected the ${workflow.name} workflow\\. Please send your media file \\(image, document, etc\\.\\) to @aogen\\_bot\\.`,
+                    { parse_mode: "MarkdownV2" }
+                );
+            } else if (workflow.type === WorkflowType.TWITTER_MONITOR) {
+                await initializeServices();
+                await ctx.reply(
+                    "Please enter the Twitter username you want to monitor \\(without the @ symbol\\):",
+                    { parse_mode: "MarkdownV2" }
+                );
+                ctx.session = { selectedWorkflow: workflow };
+            } else if (workflow.type === WorkflowType.DISCORD_MONITOR) {
+                await ctx.reply(
+                    "Please use /register\\_discord to setup Discord notifications first\\.",
+                    { parse_mode: "MarkdownV2" }
+                );
+            } else if (workflow.type === WorkflowType.DISCORD_EVENT_CALENDAR_SYNC) {
+                const telegramUsername = ctx.from?.username;
+                const chatId = ctx.chat?.id?.toString();
+
+                if (!telegramUsername) {
+                    await ctx.reply(
+                        "❌ You need to set a Telegram username first\\! Go to Settings → Username in Telegram\\.",
+                        { parse_mode: "MarkdownV2" }
+                    );
+                    return;
+                }
+
+                if (!chatId) {
+                    await ctx.reply("❌ Could not get your chat ID\\. Please try again\\.", 
+                        { parse_mode: "MarkdownV2" }
+                    );
+                    return;
+                }
+
+                // Initialize Discord Event Calendar Service if not already done
+                if (!discordEventCalendarService) {
+                    discordEventCalendarService = new DiscordEventCalendarService(bot);
+                }
+
+                // Get the real OAuth URL
+                const authUrl = await discordEventCalendarService.initializeCalendarSync(
+                    chatId,
+                    telegramUsername
+                );
+
+                await ctx.reply(
+                    `🗓️ **Discord Event Calendar Sync Setup**\n\n` +
+                    `This workflow will automatically sync Discord events to your Google Calendar\\!\n\n` +
+                    `📋 **Correct Setup Order:**\n` +
+                    `1\\. **Discord Admin:** Use \`/setup\\-event\\-monitoring\` in your server ✅\n` +
+                    `2\\. **You:** Use \`/calendar\\-sync telegram\\-username:${telegramUsername}\` in Discord ✅\n` +
+                    `3\\. **You:** Click the Google Calendar authorization link below\n` +
+                    `4\\. Grant calendar permissions\n` +
+                    `5\\. Events will automatically sync to your calendar\\!\n\n` +
+                    `🔗 **Google Calendar Authorization:**\n` +
+                    `[Click here to authorize Google Calendar](${authUrl})\n\n` +
+                    `💡 **Important:** Make sure you've completed steps 1\\-2 in Discord first, otherwise the calendar connection won't link to any Discord servers\\!\n\n` +
+                    `✨ **Features:**\n` +
+                    `• Automatic event sync from Discord\n` +
+                    `• Customizable reminders \\(30 min before events\\)\n` +
+                    `• Real\\-time notifications via Telegram\n` +
+                    `• Support for multiple Discord servers`,
+                    {
+                        parse_mode: "MarkdownV2",
+                        link_preview_options: { is_disabled: true }
+                    }
+                );
+
+                // Analytics
+                analytics.capture({
+                    distinctId: ctx.from?.id?.toString() || "unknown",
+                    event: "Calendar_sync_initiated",
+                    properties: {
+                        telegramUsername: telegramUsername,
+                        chatId: chatId,
+                    },
+                });
+            }
+
+            // Send a callback query answer to remove the loading state
+            await ctx.answerCbQuery();
+        } catch (error) {
+            console.error(`Error executing workflow ${workflow.id}:`, error);
+            await ctx.reply(
+                "Sorry, there was an error starting the workflow\\. Please try using the command directly\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+        }
+    });
+});
+
+// Command to list available workflows
+bot.command("workflows", async (ctx: BotContext) => {
+    try {
+        const message = "🔧 *Available Workflows*\n\nSelect a workflow to get started:";
+        
+        // Create buttons in a 2x2 grid
+        const buttons = [];
+        for (let i = 0; i < availableWorkflows.length; i += 2) {
+            const row = [];
+            // Add first button in the row
+            row.push({
+                text: availableWorkflows[i].name,
+                callback_data: `execute_${availableWorkflows[i].id}`
+            });
+            // Add second button if it exists
+            if (i + 1 < availableWorkflows.length) {
+                row.push({
+                    text: availableWorkflows[i + 1].name,
+                    callback_data: `execute_${availableWorkflows[i + 1].id}`
+                });
+            }
+            buttons.push(row);
+        }
+
+        // Initialize session
+        ctx.session = {};
+        await ctx.reply(message, {
+            parse_mode: "MarkdownV2",
+            link_preview_options: { is_disabled: true },
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+    } catch (error) {
+        console.error("Error listing workflows:", error);
+        await ctx.reply("Sorry, there was an error listing the workflows\\. Please try again\\.");
+    }
+});
+
+bot.action("show_help", async (ctx) => {
+    try {
+        const helpMessage =
+        "🎉 Welcome to FlowWeave Bot\\! 🚀\n\n" +
+        "🤖 About FlowWeave:\n" +
+        "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
+        "📞 Our Socials:\n" +
+        "• Website: [flowweave\\.xyz](https://flowweave\\.xyz)\n" +
+        "• Discord: [Join our server](https://discord\\.gg/XT2D9k53Nk)\n" +
+        "• GitHub: [flowweave](https://github\\.com/fluid-labs)\n\n";
+ 
+
+        await ctx.editMessageText(helpMessage, {
+            parse_mode: "MarkdownV2",
+            link_preview_options: { is_disabled: true },
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "📋 Workflow List", callback_data: "show_workflows" }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error("Error showing help:", error);
+        await ctx.reply("Sorry, there was an error displaying the help message\\. Please try /help instead\\.");
+    }
+});
 
 // Start the OAuth server for Google Calendar integration
 startOAuthServer();

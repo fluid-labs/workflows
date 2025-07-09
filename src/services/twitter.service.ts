@@ -52,6 +52,7 @@ export class TwitterService {
     private analytics: PostHog;
     private isPolling: boolean = false;
     private bot: Telegraf<BotContext>;
+    private monitorTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
     constructor(bot: Telegraf<BotContext>) {
         this.prisma = new PrismaClient();
@@ -133,6 +134,14 @@ export class TwitterService {
                     chatId,
                     `Started monitoring Twitter account @${username}. You'll receive notifications for new tweets.`
                 );
+
+                // Set a timeout to stop this specific monitor after 2.5 minutes
+                const timeoutId = setTimeout(async () => {
+                    await this.removeMonitor(username, chatId);
+                    this.monitorTimeouts.delete(username);
+                }, 2.5 * 60 * 1000);
+
+                this.monitorTimeouts.set(username, timeoutId);
             }
 
             this.analytics.capture({
@@ -238,7 +247,7 @@ export class TwitterService {
         }
     }
 
-    async startPolling(intervalMs: number = 10000): Promise<void> {
+    async startPolling(intervalMs: number = 30000): Promise<void> {
         if (this.isPolling) {
             return; // Already polling
         }
@@ -263,6 +272,13 @@ export class TwitterService {
 
     async removeMonitor(username: string, chatId: string): Promise<void> {
         try {
+            // Clear any existing timeout for this monitor
+            const timeoutId = this.monitorTimeouts.get(username);
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                this.monitorTimeouts.delete(username);
+            }
+
             const monitor = await this.prisma.twitterMonitor.findFirst({
                 where: { username, chatId },
             });
