@@ -64,6 +64,22 @@ export class TwitterService {
 
     async addMonitor(username: string, chatId: string): Promise<void> {
         try {
+            // Check if the user already has any active monitors
+            const existingUserMonitor = await this.prisma.twitterMonitor.findFirst({
+                where: { chatId },
+            });
+
+            if (existingUserMonitor) {
+                await this.bot.telegram.sendMessage(
+                    chatId,
+                    `⚠️ During our testing phase, you can only monitor one Twitter account at a time.\n\n` +
+                    `You are currently monitoring @${existingUserMonitor.username}.\n\n` +
+                    `To monitor @${username} instead, first stop monitoring @${existingUserMonitor.username} using /stop_twitter.\n\n` +
+                    `🔜 Our upcoming paid plan will allow you to monitor multiple accounts simultaneously!`
+                );
+                return;
+            }
+
             // First check if the Twitter account exists and get initial tweets
             const response = await fetch(`${API_BASE_URL}/twitter/monitor`, {
                 method: "POST",
@@ -79,70 +95,49 @@ export class TwitterService {
                 throw new Error("Failed to fetch Twitter data");
             }
 
-            // Check if a monitor already exists for this username
-            const existingMonitor = await this.prisma.twitterMonitor.findUnique(
-                {
-                    where: { username },
-                }
+            // Create new monitor
+            const monitor = await this.prisma.twitterMonitor.create({
+                data: {
+                    username,
+                    chatId,
+                },
+            });
+
+            // Store initial tweets
+            const tweetData = data.data.tweets.map((tweet) => ({
+                id: tweet.id,
+                monitorId: monitor.id,
+                text: tweet.text,
+                createdAt: new Date(tweet.created_at),
+                metrics: tweet.public_metrics as Prisma.JsonObject,
+                mediaUrls: tweet.media?.map((m) => m.url) || [],
+            }));
+
+            // Use createMany for better performance
+            await this.prisma.tweetRecord.createMany({
+                data: tweetData,
+            });
+
+            await this.bot.telegram.sendMessage(
+                chatId,
+                `✅ Started monitoring Twitter account @${username}!\n\n` +
+                `🕒 Note: During our testing phase:\n` +
+                `• Monitoring will automatically stop after 2.5 minutes\n` +
+                `• You can only monitor one account at a time\n\n` +
+                `🔜 Coming soon in our paid plan:\n` +
+                `• Extended monitoring duration\n` +
+                `• Monitor multiple accounts simultaneously\n` +
+                `• Advanced analytics and features\n\n` +
+                `You'll receive notifications for new tweets here!`
             );
 
-            let monitor: { id: string; username: string; chatId: string };
-            if (existingMonitor) {
-                // If the monitor exists with a different chatId, update it
-                if (existingMonitor.chatId !== chatId) {
-                    monitor = await this.prisma.twitterMonitor.update({
-                        where: { username },
-                        data: { chatId },
-                    });
-                    await this.bot.telegram.sendMessage(
-                        chatId,
-                        `Updated monitoring for Twitter account @${username}. You'll receive notifications for new tweets.`
-                    );
-                } else {
-                    // If the same user is trying to monitor the same account, just notify them
-                    await this.bot.telegram.sendMessage(
-                        chatId,
-                        `You're already monitoring @${username}. You'll continue to receive notifications for new tweets.`
-                    );
-                    return;
-                }
-            } else {
-                // Create new monitor if none exists
-                monitor = await this.prisma.twitterMonitor.create({
-                    data: {
-                        username,
-                        chatId,
-                    },
-                });
+            // Set a timeout to stop this specific monitor after 2.5 minutes
+            const timeoutId = setTimeout(async () => {
+                await this.removeMonitor(username, chatId);
+                this.monitorTimeouts.delete(username);
+            }, 2.5 * 60 * 1000);
 
-                // Store initial tweets
-                const tweetData = data.data.tweets.map((tweet) => ({
-                    id: tweet.id,
-                    monitorId: monitor.id,
-                    text: tweet.text,
-                    createdAt: new Date(tweet.created_at),
-                    metrics: tweet.public_metrics as Prisma.JsonObject,
-                    mediaUrls: tweet.media?.map((m) => m.url) || [],
-                }));
-
-                // Use createMany for better performance
-                await this.prisma.tweetRecord.createMany({
-                    data: tweetData,
-                });
-
-                await this.bot.telegram.sendMessage(
-                    chatId,
-                    `Started monitoring Twitter account @${username}. You'll receive notifications for new tweets.`
-                );
-
-                // Set a timeout to stop this specific monitor after 2.5 minutes
-                const timeoutId = setTimeout(async () => {
-                    await this.removeMonitor(username, chatId);
-                    this.monitorTimeouts.delete(username);
-                }, 2.5 * 60 * 1000);
-
-                this.monitorTimeouts.set(username, timeoutId);
-            }
+            this.monitorTimeouts.set(username, timeoutId);
 
             this.analytics.capture({
                 distinctId: chatId,
@@ -150,7 +145,7 @@ export class TwitterService {
                 properties: {
                     username,
                     initialTweetCount: data.data.tweets.length,
-                    action: existingMonitor ? "updated" : "created",
+                    action: "created",
                 },
             });
         } catch (error) {
@@ -307,7 +302,9 @@ export class TwitterService {
 
             await this.bot.telegram.sendMessage(
                 chatId,
-                `Stopped monitoring Twitter account @${username}.`
+                `✅ Stopped monitoring Twitter account @${username}.\n\n` +
+                `You can now monitor a different account!\n\n` +
+                `🔜 Our upcoming paid plan will allow you to monitor multiple accounts simultaneously with extended durations.`
             );
         } catch (error) {
             console.error("Failed to remove Twitter monitor:", error);
