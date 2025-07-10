@@ -123,7 +123,8 @@ export class TwitterService {
                 `✅ Started monitoring Twitter account @${username}!\n\n` +
                 `🕒 Note: During our testing phase:\n` +
                 `• Monitoring will automatically stop after 2.5 minutes\n` +
-                `• You can only monitor one account at a time\n\n` +
+                `• You can only monitor one account at a time\n` +
+                `• Use /stop_twitter to stop monitoring anytime\n\n` +
                 `🔜 Coming soon in our paid plan:\n` +
                 `• Extended monitoring duration\n` +
                 `• Monitor multiple accounts simultaneously\n` +

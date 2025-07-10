@@ -81,7 +81,7 @@ const availableWorkflows: Workflow[] = [
     },
     {
         id: "calendar_sync",
-        name: "Discord Event Calendar Sync",
+        name: "Discord Event Sync",
         description:
             "Automatically sync Discord events to your Google Calendar with reminders",
         type: WorkflowType.DISCORD_EVENT_CALENDAR_SYNC,
@@ -228,20 +228,20 @@ bot.command("workflows", async (ctx: BotContext) => {
     }
 });
 
-// Help command
-bot.command("help", async (ctx: BotContext) => {
+// About us command
+bot.command("about", async (ctx: BotContext) => {
     try {
-        const helpMessage =
-        "🎉 Welcome to FlowWeave Bot\\! 🚀\n\n" +
-        "🤖 About FlowWeave:\n" +
+        const aboutMessage =
+        "🎉 *Welcome to FlowWeave Bot\\!* 🚀\n\n" +
+        "🤖 *About FlowWeave:*\n" +
         "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
-        "📞 Our Socials:\n" +
-        "• Website: [flowweave\\.xyz](https://flowweave\\.xyz)\n" +
-        "• Discord: [Join our server](https://discord\\.gg/XT2D9k53Nk)\n" +
-        "• GitHub: [flowweave](https://github\\.com/fluid-labs)\n\n";
+        "📞 *Our Socials:*\n" +
+        "• [Website](https://flowweave\\.xyz)\n" +
+        "• [Discord Server](https://discord\\.gg/XT2D9k53Nk)\n" +
+        "• [GitHub](https://github\\.com/fluid\\-labs)\n\n";
 
-        await ctx.reply(helpMessage, {
-            parse_mode: "Markdown",
+        await ctx.reply(aboutMessage, {
+            parse_mode: "MarkdownV2",
             link_preview_options: { is_disabled: true }
         });
     } catch (error) {
@@ -282,23 +282,31 @@ bot.command("execute_calendar_sync", async (ctx: BotContext) => {
                 telegramUsername
             );
 
-        await ctx.reply(
-            `🗓️ **Discord Event Calendar Sync Setup**\n\n` +
-                `This workflow will automatically sync Discord events to your Google Calendar!\n\n` +
-                `📋 **Correct Setup Order:**\n` +
-                `1. **Discord Admin:** Use \`/setup-event-monitoring\` in your server ✅\n` +
-                `2. **You:** Use \`/calendar-sync telegram-username:${telegramUsername}\` in Discord ✅\n` +
-                `3. **You:** Click the Google Calendar authorization link below\n` +
-                `4. Grant calendar permissions\n` +
-                `5. Events will automatically sync to your calendar!\n\n` +
-                `🔗 **Google Calendar Authorization:**\n` +
-                `[Click here to authorize Google Calendar](${authUrl})\n\n` +
-                `💡 **Important:** Make sure you've completed steps 1-2 in Discord first, otherwise the calendar connection won't link to any Discord servers!\n\n` +
-                `✨ **Features:**\n` +
-                `• Automatic event sync from Discord\n` +
-                `• Customizable reminders (30 min before events)\n` +
-                `• Real-time notifications via Telegram\n` +
-                `• Support for multiple Discord servers`,
+                        const message = [
+                    `🗓️ *Discord Event Calendar Sync Setup*`,
+                    ``,
+                    `This workflow will automatically sync Discord events to your Google Calendar\\!`,
+                    ``,
+                    `📋 *Correct Setup Order:*`,
+                    `1\\. *Discord Admin:* Use \`/setup\\-event\\-monitoring\` in your server ✅`,
+                    `2\\. *You:* Use \`/calendar\\-sync telegram\\-username:${telegramUsername}\` in Discord ✅`,
+                    `3\\. *You:* Click the Google Calendar authorization link below`,
+                    `4\\. Grant calendar permissions`,
+                    `5\\. Events will automatically sync to your calendar\\!`,
+                    ``,
+                    `🔗 *Google Calendar Authorization:*`,
+                    `[Click here to authorize Google Calendar](${authUrl})`,
+                    ``,
+                    `💡 *Important:* Make sure you've completed steps 1\\-2 in Discord first, otherwise the calendar connection won't link to any Discord servers\\!`,
+                    ``,
+                    `✨ *Features:*`,
+                    `• Automatic event sync from Discord`,
+                    `• Customizable reminders \\(30 min before events\\)`,
+                    `• Real\\-time notifications via Telegram`,
+                    `• Support for multiple Discord servers`
+                ].join('\\n');
+                
+                await ctx.reply(message,
             {
                 parse_mode: "Markdown",
                 link_preview_options: { is_disabled: true },
@@ -486,7 +494,7 @@ bot.action("show_workflows", async (ctx) => {
         }
         
         // Add the back button at the bottom
-        buttons.push([{ text: "🔙 Back to Start", callback_data: "show_help" }]);
+        buttons.push([{ text: "🔙 Back to Start", callback_data: "show_about" }]);
 
         await ctx.editMessageText(message, {
             parse_mode: "MarkdownV2",
@@ -588,23 +596,31 @@ availableWorkflows.forEach(workflow => {
                     telegramUsername
                 );
 
-                await ctx.reply(
-                    `🗓️ **Discord Event Calendar Sync Setup**\n\n` +
-                    `This workflow will automatically sync Discord events to your Google Calendar\\!\n\n` +
-                    `📋 **Correct Setup Order:**\n` +
-                    `1\\. **Discord Admin:** Use \`/setup\\-event\\-monitoring\` in your server ✅\n` +
-                    `2\\. **You:** Use \`/calendar\\-sync telegram\\-username:${telegramUsername}\` in Discord ✅\n` +
-                    `3\\. **You:** Click the Google Calendar authorization link below\n` +
-                    `4\\. Grant calendar permissions\n` +
-                    `5\\. Events will automatically sync to your calendar\\!\n\n` +
-                    `🔗 **Google Calendar Authorization:**\n` +
-                    `[Click here to authorize Google Calendar](${authUrl})\n\n` +
-                    `💡 **Important:** Make sure you've completed steps 1\\-2 in Discord first, otherwise the calendar connection won't link to any Discord servers\\!\n\n` +
-                    `✨ **Features:**\n` +
-                    `• Automatic event sync from Discord\n` +
-                    `• Customizable reminders \\(30 min before events\\)\n` +
-                    `• Real\\-time notifications via Telegram\n` +
-                    `• Support for multiple Discord servers`,
+                const message = [
+                    `🗓️ *Discord Event Calendar Sync Setup*`,
+                    ``,
+                    `This workflow will automatically sync Discord events to your Google Calendar\\!`,
+                    ``,
+                    `📋 *Correct Setup Order:*`,
+                    `1\\. *Discord Admin:* Use \`/setup\\-event\\-monitoring\` in your server ✅`,
+                    `2\\. *You:* Use \`/calendar\\-sync telegram\\-username:${telegramUsername}\` in Discord ✅`,
+                    `3\\. *You:* Click the Google Calendar authorization link below`,
+                    `4\\. Grant calendar permissions`,
+                    `5\\. Events will automatically sync to your calendar\\!`,
+                    ``,
+                    `🔗 *Google Calendar Authorization:*`,
+                    `[Click here to authorize Google Calendar](${authUrl})`,
+                    ``,
+                    `💡 *Important:* Make sure you've completed steps 1\\-2 in Discord first, otherwise the calendar connection won't link to any Discord servers\\!`,
+                    ``,
+                    `✨ *Features:*`,
+                    `• Automatic event sync from Discord`,
+                    `• Customizable reminders \\(30 min before events\\)`,
+                    `• Real\\-time notifications via Telegram`,
+                    `• Support for multiple Discord servers`
+                ].join('\\n');
+                
+                await ctx.reply(message,
                     {
                         parse_mode: "MarkdownV2",
                         link_preview_options: { is_disabled: true }
@@ -673,19 +689,18 @@ bot.command("workflows", async (ctx: BotContext) => {
     }
 });
 
-bot.action("show_help", async (ctx) => {
+bot.action("show_about", async (ctx) => {
     try {
-        const helpMessage =
-        "🎉 Welcome to FlowWeave Bot\\! 🚀\n\n" +
-        "🤖 About FlowWeave:\n" +
+        const aboutMessage =
+        "🎉 *Welcome to FlowWeave Bot\\!* 🚀\n\n" +
+        "🤖 *About FlowWeave:*\n" +
         "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
-        "📞 Our Socials:\n" +
-        "• Website: [flowweave\\.xyz](https://flowweave\\.xyz)\n" +
-        "• Discord: [Join our server](https://discord\\.gg/XT2D9k53Nk)\n" +
-        "• GitHub: [flowweave](https://github\\.com/fluid-labs)\n\n";
- 
+        "📞 *Our Socials:*\n" +
+        "• [Website](https://flowweave\\.xyz)\n" +
+        "• [Discord Server](https://discord\\.gg/XT2D9k53Nk)\n" +
+        "• [GitHub](https://github\\.com/fluid\\-labs)\n\n";
 
-        await ctx.editMessageText(helpMessage, {
+        await ctx.editMessageText(aboutMessage, {
             parse_mode: "MarkdownV2",
             link_preview_options: { is_disabled: true },
             reply_markup: {
