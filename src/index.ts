@@ -101,11 +101,11 @@ bot.command("start", async (ctx: BotContext) => {
 
         // Get the help message by calling the help command handler
         const baseMessage =
-            "🎉 Welcome to FlowWeave Bot\\! 🚀\n\n" +
-            "🤖 About FlowWeave:\n" +
-            "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
+            "🎉 Welcome to Flowweave Bot\\! 🚀\n\n" +
+            "🤖 About Flowweave:\n" +
+            "Flowweave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
             "📞 Our Socials:\n" +
-            "• Website: [flowweave\\.xyz](https://flowweave\\.xyz)\n" +
+            "• Website: [flowweave\\.ar\\.io](https://flowweave\\.ar\\.io)\n" +
             "• Discord: [Join our server](https://discord\\.gg/XT2D9k53Nk)\n" +
             "• GitHub: [flowweave](https://github\\.com/fluid-labs)\n\n";
 
@@ -232,11 +232,11 @@ bot.command("workflows", async (ctx: BotContext) => {
 bot.command("about", async (ctx: BotContext) => {
     try {
         const aboutMessage =
-        "🎉 *Welcome to FlowWeave Bot\\!* 🚀\n\n" +
-        "🤖 *About FlowWeave:*\n" +
-        "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
+        "🎉 *Welcome to Flowweave Bot\\!* 🚀\n\n" +
+        "🤖 *About Flowweave:*\n" +
+        "Flowweave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
         "📞 *Our Socials:*\n" +
-        "• [Website](https://flowweave\\.xyz)\n" +
+        "• [Website](https://flowweave\\.ar\\.io)\n" +
         "• [Discord Server](https://discord\\.gg/XT2D9k53Nk)\n" +
         "• [GitHub](https://github\\.com/fluid\\-labs)\n\n";
 
@@ -282,36 +282,28 @@ bot.command("execute_calendar_sync", async (ctx: BotContext) => {
                 telegramUsername
             );
 
-                        const message = [
-                    `🗓️ *Discord Event Calendar Sync Setup*`,
-                    ``,
-                    `This workflow will automatically sync Discord events to your Google Calendar\\!`,
-                    ``,
-                    `📋 *Correct Setup Order:*`,
-                    `1\\. *Discord Admin:* Use \`/setup\\-event\\-monitoring\` in your server ✅`,
-                    `2\\. *You:* Use \`/calendar\\-sync telegram\\-username:${telegramUsername}\` in Discord ✅`,
-                    `3\\. *You:* Click the Google Calendar authorization link below`,
-                    `4\\. Grant calendar permissions`,
-                    `5\\. Events will automatically sync to your calendar\\!`,
-                    ``,
-                    `🔗 *Google Calendar Authorization:*`,
-                    `[Click here to authorize Google Calendar](${authUrl})`,
-                    ``,
-                    `💡 *Important:* Make sure you've completed steps 1\\-2 in Discord first, otherwise the calendar connection won't link to any Discord servers\\!`,
-                    ``,
-                    `✨ *Features:*`,
-                    `• Automatic event sync from Discord`,
-                    `• Customizable reminders \\(30 min before events\\)`,
-                    `• Real\\-time notifications via Telegram`,
-                    `• Support for multiple Discord servers`
-                ].join('\\n');
-                
-                await ctx.reply(message,
-            {
-                parse_mode: "Markdown",
-                link_preview_options: { is_disabled: true },
-            }
-        );
+        const message =
+            "🗓️ *Discord Event Calendar Sync Setup*\n\n" +
+            "This workflow will automatically sync Discord events to your Google Calendar\\!\n\n" +
+            "📋 *Setup Steps:*\n" +
+            "1\\. *Discord Admin:* Use `/setup\\-event\\-monitoring`\n" +
+            "2\\. *You:* Use `/calendar\\-sync @" + telegramUsername + "`\n" +
+            "3\\. Click the authorization link below\n" +
+            "4\\. Grant calendar access permissions\n" +
+            "5\\. Done\\! Events will sync automatically\n\n" +
+            "🔗 *Connect Google Calendar:*\n" +
+            `[Click here to authorize](${authUrl})\n\n` +
+            "💡 *Important:* Complete steps 1\\-2 in Discord first\\!\n\n" +
+            "✨ *Features:*\n" +
+            "• Auto\\-sync Discord events\n" +
+            "• 30\\-min event reminders\n" +
+            "• Real\\-time notifications\n" +
+            "• Multi\\-server support";
+
+        await ctx.reply(message, {
+            parse_mode: "MarkdownV2",
+            link_preview_options: { is_disabled: true }
+        });
 
         // Analytics
         analytics.capture({
@@ -563,8 +555,17 @@ availableWorkflows.forEach(workflow => {
                 ctx.session = { selectedWorkflow: workflow };
             } else if (workflow.type === WorkflowType.DISCORD_MONITOR) {
                 await ctx.reply(
-                    "Please use /register\\_discord to setup Discord notifications first\\.",
-                    { parse_mode: "MarkdownV2" }
+                    "🤖 *First, invite Flowweave to your server:*\n" +
+                    "[Click here to invite the bot](https://dub\\.sh/flowweave)\n\n" +
+                    "📋 *Setup Steps:*\n" +
+                    "1\\. *Discord Admin:* Use `/monitor channel:#your\\-channel`\n" +
+                    "2\\. *You:* Use `/subscribe channel:#your\\-channel telegram:@" + ctx.from?.username + "`\n" +
+                    "3\\. *You:* Use `/register\\_discord` in this chat\n\n" +
+                    "💡 *Important:* Complete steps in order\\. The bot needs to be invited and channel monitored before subscribing\\!",
+                    { 
+                        parse_mode: "MarkdownV2",
+                        link_preview_options: { is_disabled: true }
+                    }
                 );
             } else if (workflow.type === WorkflowType.DISCORD_EVENT_CALENDAR_SYNC) {
                 const telegramUsername = ctx.from?.username;
@@ -596,36 +597,30 @@ availableWorkflows.forEach(workflow => {
                     telegramUsername
                 );
 
-                const message = [
-                    `🗓️ *Discord Event Calendar Sync Setup*`,
-                    ``,
-                    `This workflow will automatically sync Discord events to your Google Calendar\\!`,
-                    ``,
-                    `📋 *Correct Setup Order:*`,
-                    `1\\. *Discord Admin:* Use \`/setup\\-event\\-monitoring\` in your server ✅`,
-                    `2\\. *You:* Use \`/calendar\\-sync telegram\\-username:${telegramUsername}\` in Discord ✅`,
-                    `3\\. *You:* Click the Google Calendar authorization link below`,
-                    `4\\. Grant calendar permissions`,
-                    `5\\. Events will automatically sync to your calendar\\!`,
-                    ``,
-                    `🔗 *Google Calendar Authorization:*`,
-                    `[Click here to authorize Google Calendar](${authUrl})`,
-                    ``,
-                    `💡 *Important:* Make sure you've completed steps 1\\-2 in Discord first, otherwise the calendar connection won't link to any Discord servers\\!`,
-                    ``,
-                    `✨ *Features:*`,
-                    `• Automatic event sync from Discord`,
-                    `• Customizable reminders \\(30 min before events\\)`,
-                    `• Real\\-time notifications via Telegram`,
-                    `• Support for multiple Discord servers`
-                ].join('\\n');
+                const message = 
+                    "🤖 *First, invite Flowweave to your server:*\n" +
+                    "[Click here to invite the bot](https://dub\\.sh/flowweave)\n\n" +
+                    "🗓️ *Discord Event Calendar Sync Setup*\n\n" +
+                    "This workflow will automatically sync Discord events to your Google Calendar\\!\n\n" +
+                    "📋 *Setup Steps:*\n" +
+                    "1\\. *Discord Admin:* Use `/setup\\-event\\-monitoring`\n" +
+                    "2\\. *You:* Use `/calendar\\-sync @" + telegramUsername + "`\n" +
+                    "3\\. Click the authorization link below\n" +
+                    "4\\. Grant calendar access permissions\n" +
+                    "5\\. Done\\! Events will sync automatically\n\n" +
+                    "🔗 *Connect Google Calendar:*\n" +
+                    `[Click here to authorize](${authUrl})\n\n` +
+                    "💡 *Important:* Complete steps 1\\-2 in Discord first\\!\n\n" +
+                    "✨ *Features:*\n" +
+                    "• Auto\\-sync Discord events\n" +
+                    "• 30\\-min event reminders\n" +
+                    "• Real\\-time notifications\n" +
+                    "• Multi\\-server support";
                 
-                await ctx.reply(message,
-                    {
-                        parse_mode: "MarkdownV2",
-                        link_preview_options: { is_disabled: true }
-                    }
-                );
+                await ctx.reply(message, {
+                    parse_mode: "MarkdownV2",
+                    link_preview_options: { is_disabled: true }
+                });
 
                 // Analytics
                 analytics.capture({
@@ -692,11 +687,11 @@ bot.command("workflows", async (ctx: BotContext) => {
 bot.action("show_about", async (ctx) => {
     try {
         const aboutMessage =
-        "🎉 *Welcome to FlowWeave Bot\\!* 🚀\n\n" +
-        "🤖 *About FlowWeave:*\n" +
-        "FlowWeave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
+        "🎉 *Welcome to Flowweave Bot\\!* 🚀\n\n" +
+        "🤖 *About Flowweave:*\n" +
+        "Flowweave is your all\\-in\\-one automation bot that helps you manage workflows across different platforms seamlessly\\.\n\n" +
         "📞 *Our Socials:*\n" +
-        "• [Website](https://flowweave\\.xyz)\n" +
+        "• [Website](https://flowweave\\.ar\\.io)\n" +
         "• [Discord Server](https://discord\\.gg/XT2D9k53Nk)\n" +
         "• [GitHub](https://github\\.com/fluid\\-labs)\n\n";
 
