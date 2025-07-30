@@ -16,6 +16,7 @@ export class TokenMonitorService {
     private monitoringInterval: NodeJS.Timeout | null = null;
     private API_BASE_URL = "https://api-flowweave.vesala.xyz/api/token-price";
     private testPrices: Map<string, number> = new Map();
+    private initialPrices: Map<string, { price: number, isAboveTarget: boolean }> = new Map();
 
     constructor(bot: Telegraf<BotContext>) {
         console.log("[TokenMonitorService] Initializing with bot context");
@@ -87,14 +88,29 @@ export class TokenMonitorService {
                                 );
                             }
                             // Check price alerts
-                            else if (price >= monitor.targetPrice) {
-                                await this.bot.telegram.sendMessage(
-                                    monitor.chatId,
-                                    `🚨 Alert: ${monitor.token} has reached $${price}, above your target of $${monitor.targetPrice}!`,
-                                    { reply_markup: inlineKeyboard.reply_markup }
-                                );
-                                // Deactivate the monitor after alert is triggered
-                                await this.stopPriceMonitor(monitor.chatId, monitor.token);
+                            else if (monitor.targetPrice) {
+                                const monitorKey = `${monitor.chatId}_${monitor.token}`;
+                                const initialState = this.initialPrices.get(monitorKey);
+
+                                if (initialState) {
+                                    const { isAboveTarget } = initialState;
+                                    const shouldAlert = isAboveTarget ? 
+                                        price >= monitor.targetPrice : 
+                                        price <= monitor.targetPrice;
+
+                                    if (shouldAlert) {
+                                        const direction = isAboveTarget ? 'above' : 'below';
+                                        await this.bot.telegram.sendMessage(
+                                            monitor.chatId,
+                                            `🚨 Alert: ${monitor.token} has reached $${price}, ${direction} your target of $${monitor.targetPrice}!`,
+                                            { reply_markup: inlineKeyboard.reply_markup }
+                                        );
+                                        // Deactivate the monitor after alert is triggered
+                                        await this.stopPriceMonitor(monitor.chatId, monitor.token);
+                                        // Clean up the initial price data
+                                        this.initialPrices.delete(monitorKey);
+                                    }
+                                }
                             }
                         } catch (error) {
                             console.error(`[TokenMonitorService] Error checking price for ${monitor.token}:`, error);
@@ -233,6 +249,17 @@ export class TokenMonitorService {
 
     async setPriceAlert(token: string, targetPrice: number, chatId: string): Promise<boolean> {
         try {
+            // Get current price to determine monitoring direction
+            const currentPrice = await this.getTokenPrice(token);
+            const isAboveTarget = currentPrice > targetPrice;
+
+            // Store initial price and comparison direction
+            const monitorKey = `${chatId}_${token}`;
+            this.initialPrices.set(monitorKey, {
+                price: currentPrice,
+                isAboveTarget
+            });
+
             // Create or update the monitor with a target price
             await this.startPriceMonitor(token, chatId, targetPrice);
             
@@ -243,7 +270,9 @@ export class TokenMonitorService {
                 properties: {
                     workflow_type: 'price_alert',
                     token: token,
-                    target_price: targetPrice
+                    target_price: targetPrice,
+                    initial_price: currentPrice,
+                    monitoring_direction: isAboveTarget ? 'waiting_for_above' : 'waiting_for_below'
                 }
             });
 
@@ -269,6 +298,10 @@ export class TokenMonitorService {
                     updatedAt: new Date()
                 }
             });
+
+            // Clean up initial price data
+            const monitorKey = `${chatId}_${token}`;
+            this.initialPrices.delete(monitorKey);
 
             return true;
         } catch (error) {
