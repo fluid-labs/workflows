@@ -448,7 +448,7 @@ bot.on("message", async (ctx) => {
 
                 const chatId = ctx.chat.id.toString();
                 const escapedToken = selectedWorkflow.params.token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-                const escapedPrice = targetPrice.toFixed(4).replace(/\./g, '\\.');
+                const escapedPrice = targetPrice.toString().replace(/\./g, '\\.');
                 await tokenMonitorService.setPriceAlert(selectedWorkflow.params.token, targetPrice, chatId);
                 
                 await ctx.reply(
@@ -869,7 +869,7 @@ bot.action(/^token_price_(.+)$/, async (ctx) => {
         const isMonitored = activeMonitors.some(m => m.token === token);
         
         const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-        const escapedPrice = price.toFixed(4).replace(/\./g, '\\.');
+        const escapedPrice = price.toString().replace(/\./g, '\\.');
         const message = `💰 The current price of *${escapedToken}* is $${escapedPrice}\\.\n\n${isMonitored ? "This token is already being monitored\\." : "What would you like to do?"}`;
         
         const buttons = [];
@@ -963,7 +963,7 @@ bot.action("view_monitors", async (ctx) => {
         const monitorsList = activeMonitors.map(monitor => {
             const escapedToken = monitor.token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
             const priceInfo = monitor.targetPrice 
-                ? `\\(Alert at $${monitor.targetPrice.toFixed(4).replace(/\./g, '\\.')}\\)`
+                ? `\\(Alert at $${monitor.targetPrice.toString().replace(/\./g, '\\.')}\\)`
                 : '\\(Price monitoring\\)';
             return `• *${escapedToken}* ${priceInfo}`;
         }).join('\n');
@@ -1057,7 +1057,7 @@ bot.on(message("text"), async (ctx) => {
             const chatId = ctx.chat.id.toString();
             const token = selectedWorkflow.params.token;
             const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-            const escapedPrice = targetPrice.toFixed(4).replace(/\./g, '\\.');
+            const escapedPrice = targetPrice.toString().replace(/\./g, '\\.');
 
             await tokenMonitorService.setPriceAlert(token, targetPrice, chatId);
             
@@ -1115,7 +1115,7 @@ bot.command("token_monitors", async (ctx) => {
         const monitorsList = activeMonitors.map(monitor => {
             const escapedToken = monitor.token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
             const priceInfo = monitor.targetPrice 
-                ? `\\(Alert at $${monitor.targetPrice.toFixed(4).replace(/\./g, '\\.')}\\)`
+                ? `\\(Alert at $${monitor.targetPrice.toString().replace(/\./g, '\\.')}\\)`
                 : '\\(Price monitoring\\)';
             return `• *${escapedToken}* ${priceInfo}`;
         }).join('\n');
@@ -1238,7 +1238,7 @@ bot.command("test_price", async (ctx) => {
         console.log("[index] Test price set successfully");
 
         await ctx.reply(
-            `✅ Test price for *${token}* set to $${price.toFixed(4)}\\. Any active monitors or alerts will be triggered on the next check\\.`,
+            `✅ Test price for *${token}* set to $${price.toString()}\\. Any active monitors or alerts will be triggered on the next check\\.`,
             { parse_mode: "MarkdownV2" }
         );
 

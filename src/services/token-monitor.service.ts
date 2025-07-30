@@ -82,7 +82,7 @@ export class TokenMonitorService {
                             if (!monitor.targetPrice) {
                                 await this.bot.telegram.sendMessage(
                                     monitor.chatId,
-                                    `💰 Current price of ${monitor.token}: $${price.toFixed(4)}`,
+                                    `💰 Current price of ${monitor.token}: $${price}`,
                                     { reply_markup: inlineKeyboard.reply_markup }
                                 );
                             }
@@ -90,7 +90,7 @@ export class TokenMonitorService {
                             else if (price >= monitor.targetPrice) {
                                 await this.bot.telegram.sendMessage(
                                     monitor.chatId,
-                                    `🚨 Alert: ${monitor.token} has reached $${price.toFixed(4)}, above your target of $${monitor.targetPrice.toFixed(4)}!`,
+                                    `🚨 Alert: ${monitor.token} has reached $${price}, above your target of $${monitor.targetPrice}!`,
                                     { reply_markup: inlineKeyboard.reply_markup }
                                 );
                                 // Deactivate the monitor after alert is triggered
