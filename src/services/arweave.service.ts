@@ -44,8 +44,9 @@ export class ArweaveService {
 
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'telegramSend_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'telegram_init',
           action: 'initialize',
           status: 'success'
         }
@@ -53,8 +54,9 @@ export class ArweaveService {
     } catch (error) {
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'telegramSend_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'telegram_init',
           action: 'initialize',
           status: 'failed',
           error: error instanceof Error ? error.message : 'Unknown error'
@@ -104,8 +106,9 @@ export class ArweaveService {
 
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'arDrive_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'ardrive_cost',
           action: 'getCost',
           status: 'success',
           fileId,
@@ -118,8 +121,9 @@ export class ArweaveService {
     } catch (error) {
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'arDrive_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'ardrive_cost',
           action: 'getCost',
           status: 'failed',
           fileId,
@@ -147,8 +151,9 @@ export class ArweaveService {
 
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'arDrive_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'ardrive_upload',
           action: 'upload',
           status: 'success',
           fileId,
@@ -160,8 +165,9 @@ export class ArweaveService {
     } catch (error) {
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'arDrive_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'ardrive_upload',
           action: 'upload',
           status: 'failed',
           fileId,
@@ -184,8 +190,9 @@ export class ArweaveService {
 
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'telegramSend_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'telegram_notify',
           action: 'notify',
           status: 'success',
           arweaveUrl
@@ -194,8 +201,9 @@ export class ArweaveService {
     } catch (error) {
       this.analytics.capture({
         distinctId: this.userChatId || 'unknown',
-        event: 'telegramSend_node_triggered',
+        event: 'Workflow Triggered',
         properties: {
+          workflow_type: 'telegram_notify',
           action: 'notify',
           status: 'failed',
           arweaveUrl,

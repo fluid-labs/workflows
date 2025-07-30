@@ -1,10 +1,12 @@
 import { Telegraf, Context, session } from "telegraf";
 import { message } from "telegraf/filters";
+import { Update, Message } from "telegraf/types";
 import { config } from "dotenv";
 import { Workflow, WorkflowType } from "./types/workflow";
 import { ArweaveService } from "./services/arweave.service";
 import { TwitterService } from "./services/twitter.service";
 import { DiscordEventCalendarService } from "./services/discord-event-calendar.service";
+import { TokenMonitorService } from "./services/token-monitor.service";
 import { startOAuthServer } from "./oauth-server";
 import { PostHog } from "posthog-node";
 import { PrismaClient } from "@prisma/client";
@@ -20,7 +22,6 @@ const analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
 // Initialize Prisma for Discord notifications
 const prisma = new PrismaClient();
 
-// Define custom context type
 interface BotContext extends Context {
     session: {
         selectedWorkflow?: Workflow;
@@ -33,8 +34,10 @@ const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN!);
 // Add session middleware
 bot.use(session());
 
+// Initialize services
 const arweaveService = new ArweaveService(bot);
 const twitterService = new TwitterService(bot);
+const tokenMonitorService = new TokenMonitorService(bot);
 let discordEventCalendarService: DiscordEventCalendarService;
 
 // Initialize the services when the bot starts
@@ -85,6 +88,13 @@ const availableWorkflows: Workflow[] = [
         description:
             "Automatically sync Discord events to your Google Calendar with reminders",
         type: WorkflowType.DISCORD_EVENT_CALENDAR_SYNC,
+    },
+    {
+        id: "token_monitor",
+        name: "Token Monitor",
+        description:
+            "Monitor token prices and get notifications for price alerts",
+        type: WorkflowType.TOKEN_MONITOR,
     },
 ];
 
@@ -207,11 +217,24 @@ bot.command("workflows", async (ctx: BotContext) => {
     try {
         const message = "🔧 *Available Workflows*\n\nSelect a workflow to get started:";
         
-        // Create a button for each workflow
-        const buttons = availableWorkflows.map(workflow => [{
-            text: `${workflow.name}`,
-            callback_data: `execute_${workflow.id}`
-        }]);
+        // Create buttons in a 2x2 grid
+        const buttons = [];
+        for (let i = 0; i < availableWorkflows.length; i += 2) {
+            const row = [];
+            // Add first button in the row
+            row.push({
+                text: availableWorkflows[i].name,
+                callback_data: `execute_${availableWorkflows[i].id}`
+            });
+            // Add second button if it exists
+            if (i + 1 < availableWorkflows.length) {
+                row.push({
+                    text: availableWorkflows[i + 1].name,
+                    callback_data: `execute_${availableWorkflows[i + 1].id}`
+                });
+            }
+            buttons.push(row);
+        }
 
         // Initialize session
         ctx.session = {};
@@ -350,6 +373,12 @@ availableWorkflows.forEach((workflow) => {
                 await ctx.reply(
                     "Please use /execute_calendar_sync to setup Discord event calendar sync."
                 );
+            } else if (workflow.type === WorkflowType.TOKEN_MONITOR) {
+                await initializeServices();
+                await ctx.reply(
+                    "Please select a token to monitor from the list."
+                );
+                ctx.session = { selectedWorkflow: workflow };
             }
         } catch (error) {
             console.error("Error initializing workflow:", error);
@@ -405,6 +434,37 @@ bot.on("message", async (ctx) => {
                 // Clear the session
                 ctx.session = {};
             }
+        } else if (selectedWorkflow?.id === "token_alert" && selectedWorkflow.params?.token) {
+            try {
+                const targetPrice = parseFloat(ctx.message.text);
+                
+                if (isNaN(targetPrice) || targetPrice <= 0) {
+                    await ctx.reply(
+                        "❌ Please enter a valid positive number for the target price\\.",
+                        { parse_mode: "MarkdownV2" }
+                    );
+                    return;
+                }
+
+                const chatId = ctx.chat.id.toString();
+                const escapedToken = selectedWorkflow.params.token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+                const escapedPrice = targetPrice.toFixed(4).replace(/\./g, '\\.');
+                await tokenMonitorService.setPriceAlert(selectedWorkflow.params.token, targetPrice, chatId);
+                
+                await ctx.reply(
+                    `✅ Alert set\\! You will be notified when *${escapedToken}* reaches $${escapedPrice}\\!`,
+                    { parse_mode: "MarkdownV2" }
+                );
+            } catch (error) {
+                console.error("Error setting price alert:", error);
+                await ctx.reply(
+                    "Sorry, there was an error setting the price alert\\. Please try again\\.",
+                    { parse_mode: "MarkdownV2" }
+                );
+            } finally {
+                // Clear the session
+                ctx.session = {};
+            }
         } else if (selectedWorkflow) {
             // If a workflow is selected, show the media-only message
             await ctx.reply(
@@ -420,36 +480,22 @@ bot.on("message", async (ctx) => {
 });
 
 // Handle media messages
-bot.on(message("photo"), async (ctx: BotContext) => {
-    await handleMediaMessage(ctx, "photo");
-});
-
-bot.on(message("document"), async (ctx: BotContext) => {
-    await handleMediaMessage(ctx, "document");
-});
-
-bot.on(message("video"), async (ctx: BotContext) => {
-    await handleMediaMessage(ctx, "video");
-});
-
-bot.on(message("audio"), async (ctx: BotContext) => {
-    await handleMediaMessage(ctx, "audio");
-});
+bot.on(message("photo"), (ctx) => handleMediaMessage(ctx, "photo"));
+bot.on(message("document"), (ctx) => handleMediaMessage(ctx, "document"));
+bot.on(message("video"), (ctx) => handleMediaMessage(ctx, "video"));
+bot.on(message("audio"), (ctx) => handleMediaMessage(ctx, "audio"));
 
 // Helper function to handle media messages
-async function handleMediaMessage(ctx: BotContext, type: string) {
-    const selectedWorkflow = ctx.session?.selectedWorkflow;
-
-    if (!selectedWorkflow) {
+async function handleMediaMessage<T extends Context<Update> & { session?: { selectedWorkflow?: Workflow } }>(ctx: T, type: string) {
+    if (!ctx.session?.selectedWorkflow) {
         await ctx.reply("Please select a workflow first using /workflows");
         return;
     }
 
     try {
         await ctx.reply(
-            `Processing your ${type} with ${selectedWorkflow.name}...`
+            `Processing your ${type} with ${ctx.session.selectedWorkflow.name}...`
         );
-        // Since we're not handling media in this bot anymore, we don't need to set any context
         await ctx.reply(
             "Your file has been received and is being processed. You will be notified when the upload is complete."
         );
@@ -534,7 +580,45 @@ availableWorkflows.forEach(workflow => {
     // Handler for executing the workflow
     bot.action(`run_${workflow.id}`, async (ctx) => {
         try {
-            if (workflow.type === WorkflowType.ARWEAVE_UPLOAD) {
+            if (workflow.type === WorkflowType.TOKEN_MONITOR) {
+                const tokens = await tokenMonitorService.getSupportedTokens();
+                
+                if (!tokens || tokens.length === 0) {
+                    await ctx.reply(
+                        "❌ No tokens available for monitoring at the moment\\.",
+                        { parse_mode: "MarkdownV2" }
+                    );
+                    return;
+                }
+                
+                // Create buttons in a 2x2 grid
+                const buttons = [];
+                for (let i = 0; i < tokens.length; i += 2) {
+                    const row = [];
+                    // Add first button in the row
+                    row.push({
+                        text: tokens[i],
+                        callback_data: `token_price_${tokens[i]}`
+                    });
+                    // Add second button if it exists
+                    if (i + 1 < tokens.length) {
+                        row.push({
+                            text: tokens[i + 1],
+                            callback_data: `token_price_${tokens[i + 1]}`
+                        });
+                    }
+                    buttons.push(row);
+                }
+
+                const message = "🪙 *Select a token to monitor:*";
+                
+                await ctx.reply(message, {
+                    parse_mode: "MarkdownV2",
+                    reply_markup: {
+                        inline_keyboard: buttons
+                    }
+                });
+            } else if (workflow.type === WorkflowType.ARWEAVE_UPLOAD) {
                 await initializeServices();
                 // Store the user's chat ID for notifications
                 if (ctx.chat?.id) {
@@ -631,6 +715,12 @@ availableWorkflows.forEach(workflow => {
                         chatId: chatId,
                     },
                 });
+            } else if (workflow.type === WorkflowType.TOKEN_MONITOR) {
+                await initializeServices();
+                await ctx.reply(
+                    "Please select a token to monitor from the list."
+                );
+                ctx.session = { selectedWorkflow: workflow };
             }
 
             // Send a callback query answer to remove the loading state
@@ -710,13 +800,480 @@ bot.action("show_about", async (ctx) => {
     }
 });
 
+// Add handlers for token monitor workflow
+bot.action(`execute_token_monitor`, async (ctx) => {
+    try {
+        const tokens = await tokenMonitorService.getSupportedTokens();
+        
+        if (!tokens || tokens.length === 0) {
+            await ctx.reply(
+                "❌ No tokens available for monitoring at the moment\\. Please try again later\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+            return;
+        }
+        
+        // Create buttons in a 2x2 grid
+        const buttons = [];
+        for (let i = 0; i < tokens.length; i += 2) {
+            const row = [];
+            // Add first button in the row
+            row.push({
+                text: tokens[i],
+                callback_data: `token_price_${tokens[i]}`
+            });
+            // Add second button if it exists
+            if (i + 1 < tokens.length) {
+                row.push({
+                    text: tokens[i + 1],
+                    callback_data: `token_price_${tokens[i + 1]}`
+                });
+            }
+            buttons.push(row);
+        }
+
+        const message = "🪙 *Select a token to monitor:*";
+        
+        await ctx.editMessageText(message, {
+            parse_mode: "MarkdownV2",
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+
+        await ctx.answerCbQuery();
+    } catch (error) {
+        console.error("Error showing token list:", error);
+        await ctx.reply(
+            "Sorry, there was an error fetching the token list\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
+// Handle token price selection
+bot.action(/^token_price_(.+)$/, async (ctx) => {
+    try {
+        const token = ctx.match[1];
+        const chatId = ctx.chat?.id.toString();
+        
+        if (!chatId) {
+            throw new Error("Chat ID not found");
+        }
+
+        // Get current price
+        const price = await tokenMonitorService.getTokenPrice(token);
+        
+        // Get user's active monitors to check if this token is already being monitored
+        const activeMonitors = await tokenMonitorService.getUserMonitors(chatId);
+        const isMonitored = activeMonitors.some(m => m.token === token);
+        
+        const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        const escapedPrice = price.toFixed(4).replace(/\./g, '\\.');
+        const message = `💰 The current price of *${escapedToken}* is $${escapedPrice}\\.\n\n${isMonitored ? "This token is already being monitored\\." : "What would you like to do?"}`;
+        
+        const buttons = [];
+        if (!isMonitored) {
+            buttons.push([{
+                text: "📊 Start Monitoring",
+                callback_data: `token_monitor_start_${token}`
+            }]);
+            buttons.push([{
+                text: "🎯 Set Price Alert",
+                callback_data: `token_set_alert_${token}`
+            }]);
+        }
+        
+        await ctx.reply(message, {
+            parse_mode: "MarkdownV2",
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+
+        await ctx.answerCbQuery();
+    } catch (error) {
+        console.error("Error fetching token price:", error);
+        await ctx.reply(
+            "Sorry, there was an error fetching the token price\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
+// Handle start monitoring selection
+bot.action(/^token_monitor_start_(.+)$/, async (ctx) => {
+    try {
+        const token = ctx.match[1];
+        const chatId = ctx.chat?.id.toString();
+        
+        if (!chatId) {
+            throw new Error("Chat ID not found");
+        }
+
+        await tokenMonitorService.startPriceMonitor(token, chatId);
+        
+        const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        await ctx.reply(
+            `✅ You will now receive price updates for *${escapedToken}*\\!`,
+            { 
+                parse_mode: "MarkdownV2",
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📊 View Monitored Tokens", callback_data: "view_monitors" }]
+                    ]
+                }
+            }
+        );
+
+        await ctx.answerCbQuery();
+    } catch (error) {
+        console.error("Error setting up monitoring:", error);
+        await ctx.reply(
+            "Sorry, there was an error setting up price monitoring\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
+// Add handler for viewing monitored tokens
+bot.action("view_monitors", async (ctx) => {
+    console.log("[index] Received view_monitors action");
+    try {
+        const chatId = ctx.chat?.id.toString();
+        console.log("[index] Chat ID:", chatId);
+        
+        if (!chatId) {
+            throw new Error("Chat ID not found");
+        }
+
+        const activeMonitors = await tokenMonitorService.getUserMonitors(chatId);
+        console.log("[index] Retrieved active monitors:", JSON.stringify(activeMonitors, null, 2));
+        
+        if (!activeMonitors || activeMonitors.length === 0) {
+            console.log("[index] No active monitors found");
+            await ctx.reply(
+                "You don't have any active token monitors\\. Use /workflows and select Token Monitor to start monitoring tokens\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+            return;
+        }
+
+        // Create a formatted list of monitored tokens with their target prices
+        const monitorsList = activeMonitors.map(monitor => {
+            const escapedToken = monitor.token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+            const priceInfo = monitor.targetPrice 
+                ? `\\(Alert at $${monitor.targetPrice.toFixed(4).replace(/\./g, '\\.')}\\)`
+                : '\\(Price monitoring\\)';
+            return `• *${escapedToken}* ${priceInfo}`;
+        }).join('\n');
+
+        const message = "🔍 *Your Active Token Monitors*\n\n" + monitorsList;
+        
+        // Create buttons for each monitored token
+        const buttons = activeMonitors.map(monitor => [{
+            text: `❌ Stop ${monitor.token}`,
+            callback_data: `stop_monitor:${monitor.token}`
+        }]);
+
+        await ctx.reply(message, {
+            parse_mode: "MarkdownV2",
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+
+        await ctx.answerCbQuery();
+
+        // Analytics
+        analytics.capture({
+            distinctId: ctx.from?.id?.toString() || "unknown",
+            event: "Token_monitors_viewed",
+            properties: {
+                monitorCount: activeMonitors.length,
+            },
+        });
+    } catch (error) {
+        console.error("[index] Error in view_monitors action:", error);
+        await ctx.answerCbQuery("Failed to fetch monitored tokens. Please try again.");
+    }
+});
+
+// Also add the View Monitored Tokens button after setting a price alert
+bot.action(/^token_set_alert_(.+)$/, async (ctx) => {
+    try {
+        const token = ctx.match[1];
+        const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        
+        await ctx.reply(
+            `Please enter your target price for *${escapedToken}* \\(e\\.g\\. 1\\.50 for $1\\.50\\):\\`,
+            { 
+                parse_mode: "MarkdownV2",
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📊 View Monitored Tokens", callback_data: "view_monitors" }]
+                    ]
+                }
+            }
+        );
+        
+        // Store the token in session for the message handler
+        ctx.session = { 
+            selectedWorkflow: { 
+                id: "token_alert", 
+                name: "Token Price Alert",
+                description: "Set price alerts for tokens",
+                type: WorkflowType.TOKEN_MONITOR,
+                params: { token } 
+            } 
+        };
+        
+        await ctx.answerCbQuery();
+    } catch (error) {
+        console.error("Error setting up price alert:", error);
+        await ctx.reply(
+            "Sorry, there was an error setting up the price alert\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
+// Handle price alert value input
+bot.on(message("text"), async (ctx) => {
+    const selectedWorkflow = ctx.session?.selectedWorkflow;
+    
+    if (selectedWorkflow?.id === "token_alert" && selectedWorkflow.params?.token) {
+        try {
+            const targetPrice = parseFloat(ctx.message.text);
+            
+            if (isNaN(targetPrice) || targetPrice <= 0) {
+                await ctx.reply(
+                    "❌ Please enter a valid positive number for the target price\\.",
+                    { parse_mode: "MarkdownV2" }
+                );
+                return;
+            }
+
+            const chatId = ctx.chat.id.toString();
+            const token = selectedWorkflow.params.token;
+            const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+            const escapedPrice = targetPrice.toFixed(4).replace(/\./g, '\\.');
+
+            await tokenMonitorService.setPriceAlert(token, targetPrice, chatId);
+            
+            await ctx.reply(
+                `✅ Alert set\\! You will be notified when *${escapedToken}* reaches $${escapedPrice}\\!\n\nUse /token\\_monitors to manage your alerts\\!`,
+                { parse_mode: "MarkdownV2" }
+            );
+        } catch (error) {
+            console.error("Error setting price alert:", error);
+            await ctx.reply(
+                "Sorry, there was an error setting the price alert\\. Please try again\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+        } finally {
+            // Clear the session
+            ctx.session = {};
+        }
+    } else if (selectedWorkflow?.type === WorkflowType.TWITTER_MONITOR) {
+        // ... existing Twitter monitor code ...
+    } else if (selectedWorkflow) {
+        // ... existing workflow code ...
+    } else {
+        // ... existing default code ...
+    }
+});
+
+// Add command to list and manage token monitors
+bot.command("token_monitors", async (ctx) => {
+    console.log("[index] Received /token_monitors command");
+    try {
+        // Initialize session if needed
+        ctx.session = ctx.session || {};
+        console.log("[index] Session initialized:", ctx.session);
+
+        const chatId = ctx.chat?.id.toString();
+        console.log("[index] Chat ID:", chatId);
+        
+        if (!chatId) {
+            throw new Error("Chat ID not found");
+        }
+
+        const activeMonitors = await tokenMonitorService.getUserMonitors(chatId);
+        console.log("[index] Retrieved active monitors:", JSON.stringify(activeMonitors, null, 2));
+        
+        if (!activeMonitors || activeMonitors.length === 0) {
+            console.log("[index] No active monitors found");
+            await ctx.reply(
+                "You don't have any active token monitors\\. Use /workflows and select Token Monitor to start monitoring tokens\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+            return;
+        }
+
+        // Create a formatted list of monitored tokens with their target prices
+        const monitorsList = activeMonitors.map(monitor => {
+            const escapedToken = monitor.token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+            const priceInfo = monitor.targetPrice 
+                ? `\\(Alert at $${monitor.targetPrice.toFixed(4).replace(/\./g, '\\.')}\\)`
+                : '\\(Price monitoring\\)';
+            return `• *${escapedToken}* ${priceInfo}`;
+        }).join('\n');
+
+        const message = "🔍 *Your Active Token Monitors*\n\n" + monitorsList + "\n\nSelect a token to stop monitoring:";
+        
+        // Create buttons for each monitored token
+        const buttons = activeMonitors.map(monitor => [{
+            text: `❌ Stop ${monitor.token}`,
+            callback_data: `stop_monitor:${monitor.token}`
+        }]);
+
+        await ctx.reply(message, {
+            parse_mode: "MarkdownV2",
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        });
+
+        // Analytics
+        analytics.capture({
+            distinctId: ctx.from?.id?.toString() || "unknown",
+            event: "Token_monitors_listed",
+            properties: {
+                monitorCount: activeMonitors.length,
+            },
+        });
+    } catch (error) {
+        console.error("[index] Error in token_monitors command:", error);
+        await ctx.reply(
+            "Sorry, there was an error listing your token monitors\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
+// Handle stop monitoring selection
+bot.action(/^stop_monitor:(.+)$/, async (ctx) => {
+    try {
+        const token = ctx.match[1];
+        const chatId = ctx.chat?.id.toString();
+        
+        if (!chatId) {
+            throw new Error("Chat ID not found");
+        }
+
+        await tokenMonitorService.stopPriceMonitor(chatId, token);
+        
+        const escapedToken = token.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        await ctx.reply(
+            `✅ Stopped monitoring *${escapedToken}*\\.\n\nUse /workflows to start monitoring another token\\!`,
+            { parse_mode: "MarkdownV2" }
+        );
+
+        await ctx.answerCbQuery();
+
+        // Analytics
+        analytics.capture({
+            distinctId: ctx.from?.id?.toString() || "unknown",
+            event: "Token_monitor_stopped",
+            properties: {
+                token: token,
+            },
+        });
+    } catch (error) {
+        console.error("Error stopping token monitor:", error);
+        await ctx.reply(
+            "Sorry, there was an error stopping the token monitor\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
+// Add command to test token price alerts
+bot.command("test_price", async (ctx) => {
+    console.log("[index] Received /test_price command");
+    try {
+        // Initialize session if needed
+        ctx.session = ctx.session || {};
+        console.log("[index] Session initialized:", ctx.session);
+
+        const messageText = ctx.message?.text;
+        console.log("[index] Message text:", messageText);
+
+        if (!messageText) {
+            console.log("[index] No message text found");
+            await ctx.reply(
+                "Invalid command format\\. Please try again\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+            return;
+        }
+
+        const args = messageText.split(" ");
+        console.log("[index] Command args:", args);
+
+        if (args.length !== 3) {
+            console.log("[index] Invalid number of arguments");
+            await ctx.reply(
+                "Usage: /test\\_price <token> <price>\\. Example: /test\\_price BTC 50000",
+                { parse_mode: "MarkdownV2" }
+            );
+            return;
+        }
+
+        const token = args[1].toUpperCase();
+        const price = parseFloat(args[2]);
+        console.log(`[index] Setting test price for ${token}: ${price}`);
+
+        if (isNaN(price)) {
+            console.log("[index] Invalid price format");
+            await ctx.reply(
+                "Invalid price format\\. Please provide a valid number\\.",
+                { parse_mode: "MarkdownV2" }
+            );
+            return;
+        }
+
+        await tokenMonitorService.setTestPrice(token, price);
+        console.log("[index] Test price set successfully");
+
+        await ctx.reply(
+            `✅ Test price for *${token}* set to $${price.toFixed(4)}\\. Any active monitors or alerts will be triggered on the next check\\.`,
+            { parse_mode: "MarkdownV2" }
+        );
+
+    } catch (error) {
+        console.error("[index] Error in test_price command:", error);
+        await ctx.reply(
+            "Sorry, there was an error setting the test price\\. Please try again\\.",
+            { parse_mode: "MarkdownV2" }
+        );
+    }
+});
+
 // Start the OAuth server for Google Calendar integration
 startOAuthServer();
 
+// Register bot commands
+const commands = [
+    { command: 'start', description: 'Start the bot' },
+    { command: 'workflows', description: 'List available workflows' },
+    { command: 'about', description: 'About Flowweave' },
+    { command: 'register_discord', description: 'Register for Discord notifications' },
+    { command: 'token_monitors', description: 'Manage your token monitors' },
+    { command: 'test_price', description: 'Test token price alerts by setting a test price' }
+];
+
 // Start the bot
 bot.launch()
-    .then(() => {
+    .then(async () => {
         console.log("🤖 Telegram Bot is running...");
+        
+        // Set bot commands after launch
+        await bot.telegram.setMyCommands(commands);
+
+        // Initialize services
+        await initializeServices();
     })
     .catch((err) => {
         console.error("Error starting bot:", err);
@@ -726,8 +1283,10 @@ bot.launch()
 process.once("SIGINT", () => {
     bot.stop("SIGINT");
     analytics.shutdown();
+    tokenMonitorService.cleanup();
 });
 process.once("SIGTERM", () => {
     bot.stop("SIGTERM");
     analytics.shutdown();
+    tokenMonitorService.cleanup();
 });

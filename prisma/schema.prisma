@@ -143,3 +143,15 @@ model DiscordEventRecord {
   
   @@unique([id])
 }
+
+model TokenMonitor {
+  id            String         @id @default(cuid())
+  token         String        
+  chatId        String        // Telegram chat ID
+  targetPrice   Float?        // Optional target price for alerts
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([chatId, token])  // Each user can monitor a token only once
+}

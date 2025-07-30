@@ -1,16 +1,20 @@
-import { Telegraf } from "telegraf";
 import { PrismaClient } from "@prisma/client";
 import { GoogleCalendarService } from "./google-calendar.service";
+import { PostHog } from "posthog-node";
 
 export class DiscordEventCalendarService {
     private bot: any;
     private prisma: PrismaClient;
     private calendarService: GoogleCalendarService;
+    private analytics: PostHog;
 
     constructor(bot: any) {
         this.bot = bot;
         this.prisma = new PrismaClient();
         this.calendarService = new GoogleCalendarService();
+        this.analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
+            host: "https://us.i.posthog.com"
+        });
     }
 
     /**
@@ -24,6 +28,16 @@ export class DiscordEventCalendarService {
             // Use a simple string format instead of JSON to avoid encoding issues
             const stateData = `${telegramChatId}:${telegramUsername}`;
             const authUrl = this.calendarService.getAuthUrl(stateData);
+
+            // Capture workflow trigger event
+            this.analytics.capture({
+                distinctId: telegramChatId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_sync',
+                    telegram_username: telegramUsername
+                }
+            });
 
             // No database operations here - subscription should already exist from Discord command
             // We just provide the OAuth URL for calendar authorization

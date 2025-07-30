@@ -1,4 +1,5 @@
 import { google, calendar_v3 } from "googleapis";
+import { PostHog } from "posthog-node";
 
 export interface CalendarEvent {
     id?: string;
@@ -27,6 +28,7 @@ export interface CalendarSubscription {
 export class GoogleCalendarService {
     private calendar: calendar_v3.Calendar;
     private oauth2Client: any;
+    private analytics: PostHog;
 
     constructor() {
         this.oauth2Client = new google.auth.OAuth2(
@@ -38,6 +40,10 @@ export class GoogleCalendarService {
         this.calendar = google.calendar({
             version: "v3",
             auth: this.oauth2Client,
+        });
+
+        this.analytics = new PostHog(process.env.POSTHOG_API_KEY!, {
+            host: "https://us.i.posthog.com"
         });
     }
 
@@ -55,6 +61,15 @@ export class GoogleCalendarService {
             scope: scopes,
             state: telegramChatId, // Pass chat ID as state parameter
             prompt: "consent", // Force consent screen to ensure refresh token is returned
+        });
+
+        this.analytics.capture({
+            distinctId: telegramChatId,
+            event: 'Workflow Triggered',
+            properties: {
+                workflow_type: 'calendar_auth',
+                action: 'generate_url'
+            }
         });
 
         console.log("🔗 Generated OAuth URL:", authUrl);
@@ -75,6 +90,16 @@ export class GoogleCalendarService {
         try {
             console.log("🔄 Exchanging authorization code for tokens...");
             const { tokens } = await this.oauth2Client.getToken(code);
+
+            this.analytics.capture({
+                distinctId: 'system',
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_auth',
+                    action: 'exchange_tokens',
+                    status: 'success'
+                }
+            });
 
             console.log("📋 Received tokens from Google:");
             console.log(
@@ -106,6 +131,16 @@ export class GoogleCalendarService {
                 refreshToken: tokens.refresh_token || "", // Use empty string if no refresh token
             };
         } catch (error) {
+            this.analytics.capture({
+                distinctId: 'system',
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_auth',
+                    action: 'exchange_tokens',
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                }
+            });
             console.error("❌ Error exchanging code for tokens:", error);
             if (error && typeof error === "object" && "response" in error) {
                 const apiError = error as any;
@@ -175,8 +210,29 @@ export class GoogleCalendarService {
                 throw new Error("Failed to create calendar event");
             }
 
+            this.analytics.capture({
+                distinctId: calendarId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_event',
+                    action: 'create',
+                    status: 'success',
+                    event_id: response.data.id
+                }
+            });
+
             return response.data.id;
         } catch (error) {
+            this.analytics.capture({
+                distinctId: calendarId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_event',
+                    action: 'create',
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                }
+            });
             console.error("Error creating calendar event:", error);
             throw new Error(`Failed to create calendar event: ${error}`);
         }
@@ -221,7 +277,29 @@ export class GoogleCalendarService {
                 eventId: eventId,
                 requestBody: calendarEvent,
             });
+
+            this.analytics.capture({
+                distinctId: calendarId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_event',
+                    action: 'update',
+                    status: 'success',
+                    event_id: eventId
+                }
+            });
         } catch (error) {
+            this.analytics.capture({
+                distinctId: calendarId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_event',
+                    action: 'update',
+                    status: 'failed',
+                    event_id: eventId,
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                }
+            });
             console.error("Error updating calendar event:", error);
             throw new Error(`Failed to update calendar event: ${error}`);
         }
@@ -236,7 +314,29 @@ export class GoogleCalendarService {
                 calendarId: calendarId,
                 eventId: eventId,
             });
+
+            this.analytics.capture({
+                distinctId: calendarId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_event',
+                    action: 'delete',
+                    status: 'success',
+                    event_id: eventId
+                }
+            });
         } catch (error) {
+            this.analytics.capture({
+                distinctId: calendarId,
+                event: 'Workflow Triggered',
+                properties: {
+                    workflow_type: 'calendar_event',
+                    action: 'delete',
+                    status: 'failed',
+                    event_id: eventId,
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                }
+            });
             console.error("Error deleting calendar event:", error);
             throw new Error(`Failed to delete calendar event: ${error}`);
         }

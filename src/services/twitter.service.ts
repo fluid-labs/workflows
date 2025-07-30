@@ -142,12 +142,13 @@ export class TwitterService {
 
             this.analytics.capture({
                 distinctId: chatId,
-                event: "twitter_monitor_created",
+                event: "Workflow Triggered",
                 properties: {
+                    workflow_type: "twitter_monitor",
                     username,
                     initialTweetCount: data.data.tweets.length,
-                    action: "created",
-                },
+                    action: "created"
+                }
             });
         } catch (error) {
             console.error("Failed to add Twitter monitor:", error);
@@ -220,11 +221,12 @@ export class TwitterService {
 
                     this.analytics.capture({
                         distinctId: monitor.chatId,
-                        event: "new_tweet_notification",
+                        event: "Workflow Triggered",
                         properties: {
+                            workflow_type: "twitter_notification",
                             username: monitor.username,
-                            tweetId: tweet.id,
-                        },
+                            tweetId: tweet.id
+                        }
                     });
                 }
             }
@@ -295,10 +297,11 @@ export class TwitterService {
 
             this.analytics.capture({
                 distinctId: chatId,
-                event: "twitter_monitor_removed",
+                event: "Workflow Triggered",
                 properties: {
-                    username,
-                },
+                    workflow_type: "twitter_monitor_stop",
+                    username
+                }
             });
 
             await this.bot.telegram.sendMessage(

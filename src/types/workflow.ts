@@ -5,6 +5,7 @@ export interface Workflow {
     type: WorkflowType;
     params?: {
         username?: string;
+        token?: string;
     };
 }
 
@@ -13,6 +14,7 @@ export enum WorkflowType {
     TWITTER_MONITOR = "TWITTER_MONITOR",
     DISCORD_MONITOR = "DISCORD_MONITOR",
     DISCORD_EVENT_CALENDAR_SYNC = "DISCORD_EVENT_CALENDAR_SYNC",
+    TOKEN_MONITOR = "TOKEN_MONITOR",
     // Add more workflow types as needed
 }
 
